@@ -3,7 +3,7 @@
 *.env
 !.env.example
 
-# the wallet key never lives in the repo (it's in ~/.mtrades/hotwallet.json), but just in case:
+# the wallet key never lives in the repo (it's in ~/.sieve/hotwallet.json), but just in case:
 *hotwallet*.json
 *.key
 *.pem

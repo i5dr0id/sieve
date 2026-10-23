@@ -42,7 +42,7 @@ cd sieve
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# 1. create a throwaway hot wallet (key saved to ~/.mtrades/hotwallet.json, outside the repo)
+# 1. create a throwaway hot wallet (key saved to ~/.sieve/hotwallet.json, outside the repo)
 .venv/bin/python newwallet.py          # prints your PUBLIC address
 
 # 2. configure
@@ -83,7 +83,7 @@ Sieve runs well on an always-on Android phone via **Termux + a Debian proot** (n
 
 ## Security notes
 
-- Your **private key never enters the repo** — `newwallet.py` writes it to `~/.mtrades/hotwallet.json` (owner-only), and the code only ever reads it to sign.
+- Your **private key never enters the repo** — `newwallet.py` writes it to `~/.sieve/hotwallet.json` (owner-only), and the code only ever reads it to sign.
 - **API keys live in `.env`**, which is gitignored. The code scrubs key values out of any error text.
 - Never paste your private key or seed phrase anywhere. Treat the hot wallet as disposable.
 

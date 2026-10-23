@@ -16,7 +16,7 @@ proot-distro login debian
   apt-get update && apt-get install -y python3 python3-venv git tzdata
   git clone <your sieve repo> /root/sieve && cd /root/sieve
   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-  python newwallet.py            # creates /root/.mtrades/hotwallet.json
+  python newwallet.py            # creates /root/.sieve/hotwallet.json
   cp .env.example .env           # edit it
   ln -sf /usr/share/zoneinfo/<Your/Zone> /etc/localtime   # proot defaults to UTC
   exit

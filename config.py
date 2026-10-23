@@ -80,7 +80,7 @@ RPC_URLS = [u for u in (f"https://mainnet.helius-rpc.com/?api-key={ENV['HELIUS_A
 RPC_URL = RPC_URLS[0]
 RUGCHECK_KEY = ENV.get("RUGCHECK_API")             # sent as a header, so it never ends up in a URL or a log
 WALLET_ADDRESS = ENV.get("WALLET_ADDRESS") or "YOUR_WALLET_PUBLIC_ADDRESS_HERE"   # your bot wallet's PUBLIC address (set in .env). dashboard reads balance from it.
-WALLET_FILE = "~/.mtrades/hotwallet.json"   # the bot's key. never printed, never pasted
+WALLET_FILE = "~/.sieve/hotwallet.json"   # the bot's key. never printed, never pasted
 SLIPPAGE_BPS = 300          # 3% max slippage per swap; above this the swap fails instead of filling badly
 MIN_SOL_RESERVE = 0.02      # always leave this much SOL for fees, never spend it
 

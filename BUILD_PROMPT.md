@@ -44,7 +44,7 @@ a person should be able to read any file in a few minutes.
 ## 4. Security requirements (non-negotiable)
 
 - **Private key:** a utility creates a hot wallet and writes the secret key to
-  `~/.mtrades/hotwallet.json` (mode 600, directory 700) — **outside the repo**. The code only
+  `~/.sieve/hotwallet.json` (mode 600, directory 700) — **outside the repo**. The code only
   ever reads it to sign. The key is **never** printed, logged, or committed. Only the public
   address is ever shown.
 - **API keys:** loaded from a `.env` file that is **gitignored**. Ship a `.env.example` with
@@ -82,7 +82,7 @@ Each is a small single-purpose file.
 - **`config.py`** — the single source of truth. Loads `.env` into an `ENV` dict, defines
   `scrub()`, all thresholds (§8–§11), file paths split by mode, and a `buys_paused()` helper
   that checks for a `logs/PAUSE_BUYS` flag file.
-- **`newwallet.py`** — one-shot: create a keypair, save to `~/.mtrades/hotwallet.json`
+- **`newwallet.py`** — one-shot: create a keypair, save to `~/.sieve/hotwallet.json`
   (refuse if it already exists), print only the public address.
 - **`market.py`** — fetch a token's pool snapshot from DexScreener.
 - **`rugcheck.py`** — fetch and normalize a Rugcheck report (key as `X-API-KEY` header).

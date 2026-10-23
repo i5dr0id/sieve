@@ -1,10 +1,10 @@
 # newwallet.py
 # creates the desk's hot wallet. run it yourself, once, in your own terminal.
-# the key goes to ~/.mtrades/hotwallet.json (outside the project, owner-only). only the public address is printed.
+# the key goes to ~/.sieve/hotwallet.json (outside the project, owner-only). only the public address is printed.
 import json, os, stat
 from solders.keypair import Keypair
 
-DIR = os.path.expanduser("~/.mtrades")
+DIR = os.path.expanduser("~/.sieve")
 PATH = os.path.join(DIR, "hotwallet.json")
 
 if os.path.exists(PATH):
