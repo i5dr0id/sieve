@@ -30,7 +30,7 @@ flat $5 ticket  →  fixed exits (stop, take-profit ladder, trailing, time, liqu
 - **An optional AI "shadow" judge** scores every survivor but **never trades** — purely for research.
 - **A dashboard** (`dashboard/server.py`) shows live state, with a **Stop button** and a **log export**.
 
-See `config.py` for every rule and threshold, and `TODO.md` for the roadmap.
+See `config.py` for every rule and threshold, and `TODO.md` for the roadmap. To understand or rebuild Sieve from first principles, `BUILD_PROMPT.md` is a complete spec/prompt that recreates it from scratch.
 
 ## Setup
 
