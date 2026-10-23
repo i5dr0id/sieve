@@ -1,0 +1,24 @@
+# secrets — NEVER commit
+.env
+*.env
+!.env.example
+
+# the wallet key never lives in the repo (it's in ~/.mtrades/hotwallet.json), but just in case:
+*hotwallet*.json
+*.key
+*.pem
+
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# runtime data (trade history, positions, session logs — personal, machine-specific)
+logs/
+
+# os / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
