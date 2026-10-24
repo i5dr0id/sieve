@@ -22,3 +22,6 @@ logs/
 *.swp
 .idea/
 .vscode/
+
+# private notes / session transcripts
+notes/

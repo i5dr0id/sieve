@@ -84,12 +84,35 @@ Already done on 2026-10-20:
   - The free key **can't** read `token_security`. It **can** read price, overview, candles, holders and trades.
 - [ ] **Holder and wallet growth as a rule:** once there's data, test whether `uniqueWallet1hChangePercent > 0` or `buy_share_usd_1h > 0.55` separates winners from losers.
   - Counts mislead: startupSI showed 4,718 buys against 1,099 sells, but in USD the split was 52% against 48%.
+- [ ] **Volume quality (added 2026-10-24).** Today the only volume rule is a ceiling (1h volume > 5× pool → skip), plus "more sells than buys" counted by number of trades. There's no minimum volume and no fake-volume check. The DOAS analysis showed why that matters: dust-size bot wallets make hundreds of tiny buys, which inflate volume and buy counts and can even make "buys > sells" look healthy.
+  - **Log first (no rule yet).** At decision time, record these from Birdeye `token_overview`, which `birdeye.py` already fetches:
+    - `buy_share_usd_1h` = buy $ / (buy $ + sell $). Real money flow, not trade count.
+    - `avg_trade_usd_1h` = `v1hUSD / trade1h`. Tiny averages = dust bots.
+    - `trades_per_wallet_1h` = `trade1h / uniqueWallet1h`. High = a few wallets churning.
+    - `uniqueWallet1h` and `v1hUSD`. Breadth and a volume floor.
+  - **Fix needed first:** these are only fetched by `shadowjudge.py`, which doesn't run on the phone (no `claude` there). So right now **nothing is logging them**. Fetch and log them in the code-judge path (`autojudge.py` / `followup.start`) so the phone collects the data.
+  - **Rules to test once 50+ judged tokens have these fields** (thresholds are starting guesses, to be scored like every other rule against +6h/+24h outcomes):
+    - skip if `buy_share_usd_1h < 0.50`
+    - skip if `avg_trade_usd_1h < $20`
+    - skip if `trades_per_wallet_1h > 8`
+    - skip if `uniqueWallet1h < 50`
+    - skip if `v1hUSD < $10k` (the missing volume floor)
+  - Keep a rule only if its skips did worse than the tokens it let through. Watch the cost: Birdeye's free tier is 60 calls/min, and ~10 survivors a day × 1 call is nothing.
 - [ ] **Liquidity trend:** is the pool growing or shrinking? Snapshot the pool size every scan and compare.
 - [ ] **Smart-money wallets (Helius):** keep a list of wallets that keep buying early and selling green. A token those wallets buy is a strong signal. This is the biggest job, so do it last.
   - **Discussed 2026-10-22 (prototype deferred).** Use it two ways: (A) a confirmation signal on tokens that already passed the 13 checks — buy the survivors proven wallets also bought; (B) a discovery source — a tracked wallet's new buy enters the pipeline but still must pass all 13 checks. Rug filter stays in front, Sieve's own exits stay behind, so none of OdinBot-style blind-copy risk. NOT the same as copy-trading (OdinBot = blind copy + 1% fee + custody).
   - **How to qualify a wallet to copy:** win rate 55–70% (>90% = farming/wash red flag), positive realized PnL over 7/30d, profit spread across many tokens (not one moonshot), ≥30–50 closed trades, cuts losers, copyable hold time (mins–hours not 5s bots), NOT insider/bundler/deployer-linked (they sell into your buy), sells green. Fit: prefer selection-edge wallets over pure snipers (you enter after them). Rule: require **2+ tracked wallets** on the same token (consensus), re-score weekly (wallets go cold), never size up for a "whale".
   - **Detection:** read it off-chain via Helius. **Webhooks** (push, ~1 credit per actual trade event → ~15k/mo for 30 wallets, near-instant) beat **polling** the Enhanced Transactions API (`/v0/addresses/{addr}/transactions?type=SWAP`, ~170–260k/mo for 20–30 wallets at 5-min). A buy = swap where wallet's SOL/USDC down + target-token up (use net balance change). Free tier = 1M credits/mo, 10 req/s (rate limit is a non-issue; monthly credits is the cap, shared with the desk's own RPC). **Confirm the Enhanced-Tx API credit cost first** — modeled at 1/call; if 10/call only webhooks/5–10min polling survive.
   - Start **logged-only** (track candidate wallets, score them, log when a tracked wallet buys a token Sieve is already seeing); promote to a buy rule only after the data shows it separates winners from losers — same discipline as dropping the 200% rule.
+  - **First manual run, 2026-10-24** (read-only, 134 Helius calls; script saved as `research/wallet_mine.py`). Mined real early buyers (excl. deployer, buyers within 2 slots of launch, entries < 0.05 SOL) of the winners in `followups.csv`: 1SHARE (+125% 24h), McNugget (+78% 6h), DOAS (open, +48%).
+    - **Only overlap:** `7FPqg7MpJwvGneBPvkBrCDjAvZhFnAvoiUw9LF91nsN`, early in both 1SHARE and McNugget. 23 closed, 57% win, +0.75 SOL realized, but 62% of profit from one token and a 4-min median hold. **Watchlist candidate, not proven.** Re-check when it has 30+ closed.
+    - **Insider cluster (disqualify):** `CcMdw1Wv…HM95p`, `D9qL3RF9…dJZV5`, `CViqSvYE…wASDG`, `DpRfezWY…2kFwY`. Each put 6–9 SOL into 1SHARE, the only token in their history, ~75 min holds, +80 to +157 SOL each. Fresh single-use wallets with matching timing = team/insiders.
+      - **Funding trace (36 calls):** all 4 funded 10-22 16:12–16:19, 6–13 min **before** 1SHARE launched (16:25, deployer `5kwGkLJ7ijPQygFZjRB717CXj5Q9MU8XcobzxSz95L9H`). Each funded through a one-use go-between wallet (1 tx ever, same amount passed straight through, e.g. `ETyf…` → `GJYE…` → `DpRf…`, 14.15 SOL, same minute). 4 different go-betweens, 4 different sources, profits split to 2 different wallets each. No direct deployer link within 2 hops. **Conclusion:** coordinated, pre-planned and layered to hide the source. Not proven to be the deployer. Pattern to auto-flag later: wallet funded < 30 min before the token's launch via a 1-tx funder.
+    - Losers: `2HG1kqZn…x8f48` (−23.9 SOL), `Adhf9jPu…BnpCQS` (−32.4 SOL), both McNugget early buyers.
+    - Dust-size "early buyers" (~0.001 SOL, 100s of swaps, never win) are volume bots. Without the min-entry filter they dominate the list.
+    - **Bug to fix before automating:** the signature walk stops at 60 pages (60k txns). DOAS has more, so its "deployer"/"earliest buyers" came from mid-life, not launch. The earlier demo's "HM… wallets look related to the deployer" hint was wrong for that reason. Walk the full history, or find the pool-creation tx directly.
+    - **Takeaway:** the method sorts bots, insiders, losers and real leads. But 3 winners is too few to find overlap. Run it weekly over the week's winners once `followups.csv` has dozens.
+    - Side note for item 4: **1SHARE was a code-judge SKIP that went +125%** at 24h. One data point.
 - [ ] Each new signal starts as **logged only**. It becomes a rule only after #4 shows it separates winners from losers.
 
 **Keys added 2026-10-20** (all in `.env`, loaded by `config.ENV`, removed from any error text by `config.scrub()`):

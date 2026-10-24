@@ -45,7 +45,7 @@ def watch() -> list[str]:
             return True
 
         if m["liq_usd"] < s["liq0"] * (1 - EXIT["liq_drop_pct"] / 100):
-            out(1.0, "liquidity_pulled"); continue
+            out(1.0, "liquidity_drop"); continue
         if pct <= EXIT["stop_pct"]:
             out(1.0, "stop"); continue
         ladder = EXIT["ladder"]
@@ -58,6 +58,9 @@ def watch() -> list[str]:
             continue
         if s["steps"] > 0 and price <= s["peak"] * (1 - EXIT["trail_pct"] / 100):
             out(1.0, "trailing_stop"); continue
+        # past the time stop and still up: trail tighter so a slow +20..+100% winner can't sit forever and round-trip
+        if s["steps"] == 0 and hours >= EXIT["time_stop_hours"] and price <= s["peak"] * (1 - EXIT["late_trail_pct"] / 100):
+            out(1.0, "late_trail"); continue
         if hours >= EXIT["time_stop_hours"] and pct < EXIT["time_stop_min_pct"]:
             out(1.0, "time_stop")
     return events

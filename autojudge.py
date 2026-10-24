@@ -16,6 +16,8 @@ def rules(m: dict, symbol: str, mint: str, checks: list[dict]) -> str | None:
         return f"up {m['chg_1h']:.0f}% in the last hour (max {r['max_chg_1h_pct']})"
     if m["liq_usd"] and (m.get("vol_1h") or 0) / m["liq_usd"] > r["max_vol_to_liq_1h"]:
         return f"1h volume {m['vol_1h'] / m['liq_usd']:.1f}x the pool (max {r['max_vol_to_liq_1h']})"
+    if m["liq_usd"] and (m.get("vol_1h") or 0) / m["liq_usd"] < r["min_vol_to_liq_1h"]:
+        return f"fake climb: 1h volume {(m.get('vol_1h') or 0) / m['liq_usd']:.2f}x the pool (min {r['min_vol_to_liq_1h']})"
     if r["sells_over_buys_1h"] and m["sells_1h"] > m["buys_1h"]:
         return f"sellers in control: {m['sells_1h']} sells vs {m['buys_1h']} buys in 1h"
     cutoff = time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() - r["copycat_hours"] * 3600))

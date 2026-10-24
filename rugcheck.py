@@ -50,11 +50,13 @@ def fact_kill(t: dict) -> str | None:
     if t["mint_authority"]:                                      return "mint_open"
     if t["freeze_authority"]:                                    return "freeze_open"
     if t["danger"]:                                              return "danger:" + t["danger"][0]
+    if (w := [x for x in t["warn"] if x in FACTS["kill_warns"]]): return "warn:" + w[0]
     if t["risk_score"] > FACTS["max_risk_score"]:                return "risk_score"
     if t["lp_locked_pct"] is None or t["lp_locked_pct"] < FACTS["min_lp_locked_pct"]:
         return "lp_unlocked"
     if t["top10_pct"] is None or t["top10_pct"] > FACTS["max_top10_pct"]:
         return "top10_heavy"
+    if t["top10_pct"] < FACTS["min_top10_pct"]:                  return "top10_too_flat"
     if t["dev_pct"] is None or t["dev_pct"] > FACTS["max_dev_pct"]:
         return "dev_holds"
     if t["insiders"] > FACTS["max_insiders"]:                    return "insiders"

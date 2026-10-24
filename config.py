@@ -36,6 +36,8 @@ FACTS = {                   # the rug filter. code only, no model
     "max_risk_score": 40,       # rugcheck score_normalised, 0-100, higher = riskier
     "min_lp_locked_pct": 90,    # biggest pool: LP locked or burned
     "max_top10_pct": 30,        # top 10 holders, pools and lockers excluded
+    "min_top10_pct": 1,         # top 10 holding less than this = supply split across look-alike wallets (DOAS, startupSI). 2 cut a winner in the backtest
+    "kill_warns": ["High holder correlation"],   # rugcheck warnings treated as kills: many holder wallets are one owner
     "max_dev_pct": 5,           # supply still sitting in the creator wallet
     "max_insiders": 0,          # insider-flagged holders + insider graph hits
     "min_liquidity_usd": 30000,
@@ -51,7 +53,8 @@ MIN_CONFIDENCE = 0.7
 CODE_JUDGE_AFTER_MIN = 0         # live: nobody is watching, judge right away
 CODE_JUDGE = {                  # each rule is a SKIP. a token that breaks none of them is a BUY at CONFIDENCE
     "max_chg_1h_pct": None,         # off: the backtest showed this rule skipping winners. a number turns it back on
-    "max_vol_to_liq_1h": 5,         # 1h volume over 5x the pool = bot churn
+    "max_vol_to_liq_1h": 10,        # 1h volume over 10x the pool = bot churn. was 5: backtest 2026-10-24 showed 5 skipping the winners
+    "min_vol_to_liq_1h": 0.1,       # 1h volume under 0.1x the pool = a climb nobody is trading (fake climb)
     "sells_over_buys_1h": True,     # more sells than buys in the last hour = holders dumping
     "copycat_hours": 24,            # same symbol seen under another contract within this window
     "require_website": True,
@@ -66,8 +69,9 @@ EXIT = {
     "stop_pct": -35,                        # hard stop from entry
     "ladder": [(100, 0.50), (200, 0.25)],   # +100% sells half, +200% sells a quarter
     "trail_pct": 30,                        # the rest: out when price falls 30% from its peak
-    "time_stop_hours": 6,                   # not up 20% after 6 hours -> out, dead money
+    "time_stop_hours": 4,                   # not up 20% after 4 hours -> out, dead money
     "time_stop_min_pct": 20,
+    "late_trail_pct": 20,                   # past the time stop, no ladder sale yet: out when price falls 20% from its peak
     "liq_drop_pct": 40,                     # pool liquidity down 40% from entry -> out now
 }
 
