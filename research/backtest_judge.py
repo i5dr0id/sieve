@@ -25,8 +25,8 @@ def websites(mints):
     return have
 
 
-def main():
-    dirs = sys.argv[1:] or ["logs/phone_snapshot/live", "logs/phone_snapshot/paper"]
+def build(dirs):
+    """every token that passed the 13 checks, with candles, entry, the hour before, and what the code judge sees."""
     toks = [t for t in load(dirs) if time.time() - t["t0"] > 4 * 3600]
     bs, checks = {}, []
     for d in dirs:
@@ -45,23 +45,33 @@ def main():
         t.update(entry=before[-1][4], path=after, v2l=sum(x[5] for x in c if t["t0"] - 3600 < x[0] <= t["t0"]) / t["liq"],
                  buys=bs.get(t["mint"], (0, 0))[0], sells=bs.get(t["mint"], (0, 0))[1], web=web.get(t["mint"], False))
         t["max_pct"] = (max(x[2] for x in after) / t["entry"] - 1) * 100
+        t["hour_before"] = [x for x in c if t["t0"] - 3600 < x[0] <= t["t0"]]
         cutoff = time.strftime("%Y-%m-%d %H:%M", time.localtime(t["t0"] - 24 * 3600))
         now = time.strftime("%Y-%m-%d %H:%M", time.localtime(t["t0"]))
         t["copycat"] = any((r["symbol"] or "").lower() == t["symbol"].lower() and r["mint"] != t["mint"]
                            and cutoff <= r["time"] <= now for r in checks)
         have.append(t)
+    return have
+
+
+new_filters = lambda t: "High holder correlation" in t["warn"] or t["top10"] < 1 or t["v2l"] < 0.1
+
+
+def judge_buys(have, cap=10, filters=True):
+    """the code judge as configured (cap = max 1h volume/pool, None = off), plus the new rug-filter rules."""
+    out = []
+    for t in have:
+        if filters and new_filters(t): continue
+        if cap is not None and t["v2l"] > cap: continue
+        if t["sells"] > t["buys"] or t["copycat"] or not t["web"]: continue
+        out.append(t)
+    return out
+
+
+def main():
+    have = build(sys.argv[1:] or ["logs/phone_snapshot/live", "logs/phone_snapshot/paper"])
     print(f"{len(have)} tokens that passed the 13 checks, with price data\n")
-
-    new_filters = lambda t: "High holder correlation" in t["warn"] or t["top10"] < 1 or t["v2l"] < 0.1
-
-    def buys(cap, filters=True):
-        out = []
-        for t in have:
-            if filters and new_filters(t): continue
-            if cap is not None and t["v2l"] > cap: continue
-            if t["sells"] > t["buys"] or t["copycat"] or not t["web"]: continue
-            out.append(t)
-        return out
+    buys = lambda cap: judge_buys(have, cap)
 
     def score(lst, **kw):
         r = [usd(simulate(t["entry"], t["path"], **kw)[0]) for t in lst]

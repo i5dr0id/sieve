@@ -72,7 +72,7 @@ def simulate(entry, path, stop=-35, ladder=((100, 0.5), (200, 0.25)), trail=30, 
 
 
 usd = lambda frac: TICKET * (frac - COST_PCT / 100)
-REV = re.compile(r"REVIEW (\S+) (\S+) .*?liq=\$([\d,]+) .*?top10=([\d.]+)% .*?warn=(\[.*\])")
+REV = re.compile(r"REVIEW (\S+) (\S+) .*?liq=\$([\d,]+) age=(\d+)m .*?top10=([\d.]+)% .*?warn=(\[.*\])")
 
 
 def load(dirs):
@@ -90,7 +90,7 @@ def load(dirs):
                 continue
             mint = m.group(1)
             toks[mint] = {"mint": mint, "symbol": m.group(2), "liq": float(m.group(3).replace(",", "")),
-                          "top10": float(m.group(4)), "warn": ast.literal_eval(m.group(5)),
+                          "age_min": int(m.group(4)), "top10": float(m.group(5)), "warn": ast.literal_eval(m.group(6)),
                           "t0": time.mktime(time.strptime(when[mint], "%Y-%m-%d %H:%M")),
                           "judge": judge.get(mint, "-"), "src": os.path.basename(d)}
     return list(toks.values())
