@@ -69,7 +69,11 @@ def watch() -> list[str]:
             out(1.0, "stop"); continue
         ladder = EXIT["ladder"]
         if s["steps"] < len(ladder) and pct >= ladder[s["steps"]][0]:
-            if not out(ladder[s["steps"]][1], f"take_profit_{ladder[s['steps']][0]}"):
+            # each step sells its share of what is held NOW, so a manual sale (Sell half) keeps the ladder's shape
+            # and a runner stays on the trailing stop. untouched positions get exactly the configured fractions of
+            # the original: +100% sells 50% of it, +200% sells 25% of it (= half of what's left).
+            share = ladder[s["steps"]][1] / (1 - sum(f for _, f in ladder[:s["steps"]]))
+            if not out(share * s["qty"] / s["qty0"], f"take_profit_{ladder[s['steps']][0]}"):
                 continue
             with book.edit() as b:
                 if mint in b:

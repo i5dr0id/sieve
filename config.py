@@ -74,7 +74,8 @@ SHADOW_JUDGE = {"model": "haiku", "timeout_s": 120}
 
 EXIT = {
     "stop_pct": -35,                        # hard stop from entry
-    "ladder": [(100, 0.50), (200, 0.25)],   # +100% sells half, +200% sells a quarter
+    "ladder": [(100, 0.50), (200, 0.25)],   # +100% sells half, +200% sells a quarter (of the original). after a
+                                            # manual sale, each step sells the same share of what is left instead
     "trail_pct": 30,                        # the rest: out when price falls 30% from its peak
     "time_stop_hours": 4,                   # not up 20% after 4 hours -> out, dead money
     "time_stop_min_pct": 20,
