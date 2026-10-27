@@ -153,6 +153,7 @@
       <span class="pill" id="updated">loading…</span>
       <button class="act" id="btn-pause" title="Pause new buys in this mode (open trades keep their exits)">⏸ Pause buys</button>
       <button class="act" id="btn-stoplive" style="display:none" title="Pause live buys AND sell every open live position now">■ Stop live · sell all</button>
+      <button class="act" id="btn-sweep" style="display:none" title="Send the live profit above what the bot keeps to your main wallet (address fixed in .env)">⇪ Sweep</button>
       <button class="act" id="btn-export" title="Download this mode's logs as a .tar.gz">⬇ Export logs</button>
     </div>
   </header>
@@ -228,7 +229,7 @@ const short = (m) => m ? m.slice(0, 4) + "…" + m.slice(-4) : "";
 const dex = (m) => `https://dexscreener.com/solana/${m}`;
 
 let mode = localStorageGet("mode") || "paper";
-let token = null, paused = false;
+let token = null, paused = false, sweep = {};
 const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 $("#day").value = today;
 
@@ -289,7 +290,7 @@ async function load() {
   $("#updated").textContent = "updated " + s.now.slice(11, 19);
 
   // pause state of the mode on screen
-  token = s.token; paused = !!s.paused;
+  token = s.token; paused = !!s.paused; sweep = s.sweep || {};
   renderPause();
 
   // pending reviews
@@ -400,6 +401,12 @@ function renderPause() {
   b.classList.toggle("paused", paused);
   b.textContent = (paused ? "▶ Resume " : "⏸ Pause ") + mode + " buys";
   $("#btn-stoplive").style.display = mode === "live" ? "" : "none";
+  const sb = $("#btn-sweep");
+  sb.style.display = mode === "live" && sweep.to ? "" : "none";
+  if (sweep.to) {
+    sb.textContent = sweep.ready ? `⇪ Sweep ${usd(sweep.usd)} → ${sweep.to}` : `⇪ Sweep (nothing above ${usd(sweep.keep_usd)})`;
+    sb.disabled = !sweep.ready;
+  }
   const pbn = $("#paused-banner");
   pbn.innerHTML = `⏸ <b>${mode === "live" ? "Live" : "Paper"} buys paused.</b> No new ${mode} positions will open. Open trades keep their exits.` +
     (mode === "live" ? " Paper keeps collecting data." : " Live is not affected.");
@@ -445,6 +452,18 @@ $("#btn-stoplive").onclick = async () => {
     else { alert(`Live stopped. Selling ${j.closing} open position${j.closing === 1 ? "" : "s"} now.`); load(); }
   } catch (e) { alert("Server not reachable."); }
   b.disabled = false;
+};
+
+$("#btn-sweep").onclick = async () => {
+  if (!confirm(`Send ${sweep.sol.toFixed(4)} SOL (~${usd(sweep.usd)}) to your main wallet ${sweep.to}?\nThe bot keeps ${usd(sweep.keep_usd)}.`)) return;
+  const b = $("#btn-sweep"); b.disabled = true; b.textContent = "Sweeping…";
+  try {
+    const r = await fetch("/api/sweep", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }) });
+    const j = await r.json();
+    alert(j.error ? "Failed: " + j.error : j.result);
+  } catch (e) { alert("Server not reachable."); }
+  load();
 };
 
 $("#btn-export").onclick = () => {

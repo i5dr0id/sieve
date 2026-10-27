@@ -82,6 +82,18 @@ def wallet() -> dict:
     return {"address": config.WALLET_ADDRESS, "sol": sol, "usd": sol * px, "sol_usd": px}
 
 
+def sweep_preview(w) -> dict:
+    """what the Sweep button would send right now. the address comes from .env, never from the page."""
+    to = config.SWEEP_TO
+    if not to or not isinstance(w, dict) or "sol" not in w:
+        return {"to": None}
+    s = config.SWEEP
+    keep = max(s["keep_usd"] / w["sol_usd"], config.MIN_SOL_RESERVE)
+    sol = max(0.0, min(w["sol"] - keep - 0.00001, s["max_sol"]))
+    return {"to": f"{to[:4]}…{to[-4:]}", "keep_usd": s["keep_usd"], "sol": sol, "usd": sol * w["sol_usd"],
+            "ready": sol * w["sol_usd"] >= s["min_usd"]}
+
+
 def runner() -> dict:
     # match on the pattern, not pgrep's -l label: under proot the label is truncated to
     # the ~15-char comm field (e.g. "/bin/ba"), so a substring check on it would miss.
@@ -126,6 +138,7 @@ def state(mode: str, day: str) -> dict:
         "token": TOKEN,
         "runner": runner(),
         "wallet": cached("wallet", 60, wallet),
+        "sweep": sweep_preview(cached("wallet", 60, wallet)),
         "funnel": {
             "checked": len({r["mint"] for r in today if r["stage"] != "claude"}),
             "source_down": len(down),
@@ -261,6 +274,18 @@ class H(BaseHTTPRequestHandler):
                 for mint in mints:
                     request_close("live", mint)
                 return reply(200, {"paused": True, "closing": len(mints)})
+            except Exception as e:
+                return reply(500, {"error": config.scrub(e)})
+        if u.path == "/api/sweep":
+            # sends only to SWEEP_TO_ADDRESS in .env: nothing in this request can choose the address or the amount
+            if data.get("token") != TOKEN:
+                return reply(403, {"error": "bad token"})
+            try:
+                r = subprocess.run([sys.executable, "sweep.py", *(["--test"] if data.get("test") else [])],
+                                   cwd=os.path.dirname(HERE), env={**os.environ, "SIEVE_MODE": "live"},
+                                   capture_output=True, text=True, timeout=150)
+                out = (r.stdout or r.stderr).strip().splitlines()
+                return reply(200, {"result": config.scrub(out[-1]) if out else "no output"})
             except Exception as e:
                 return reply(500, {"error": config.scrub(e)})
         self.send(404, b"not found", "text/plain")

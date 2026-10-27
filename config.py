@@ -95,6 +95,13 @@ WALLET_FILE = "~/.sieve/hotwallet.json"   # the bot's key. never printed, never 
 SLIPPAGE_BPS = 300          # 3% max slippage per swap; above this the swap fails instead of filling badly
 MIN_SOL_RESERVE = 0.02      # always leave this much SOL for fees, never spend it
 
+# profit sweeps (sweep.py): only ever to YOUR wallet, set as SWEEP_TO_ADDRESS in .env. the dashboard can't change it.
+SWEEP_TO = ENV.get("SWEEP_TO_ADDRESS")
+SWEEP = {"keep_usd": 18,    # leave this much in the bot: 2 tickets, the fee reserve and a couple of losses
+         "min_usd": 3,      # don't bother sending less than this
+         "max_sol": 0.5,    # hard cap per sweep
+         "test_sol": 0.005} # sweep.py --test
+
 # paper and live never share a file, so a pretend position can never be treated as a real one
 MODE = "paper" if PAPER else "live"
 LOG = f"logs/{MODE}/checks.csv"

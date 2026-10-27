@@ -19,7 +19,7 @@ notify() {
   fi
 }
 
-tail -n 0 -F "$LOG" | grep -E --line-buffered "LIVE (BUY|sold)|WATCH|ERROR|Traceback|REPORT realized|WEEKLY REVIEW|END" |
+tail -n 0 -F "$LOG" | grep -E --line-buffered "LIVE (BUY|sold)|WATCH|SWEEP|ERROR|Traceback|REPORT realized|WEEKLY REVIEW|END" |
 while IFS= read -r line; do
   notify "$line"
 done

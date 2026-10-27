@@ -53,6 +53,7 @@ while [ "$(date +%s)" -lt "$end_ts" ]; do
   if [ "$(date +%Y-%m-%d)" != "$day" ]; then              # new day: report the one that just ended
     reports "$day"
     day=$(date +%Y-%m-%d)
+    [ "$(date +%u)" = 1 ] && SIEVE_MODE=live $PY sweep.py --weekly 2>&1 | sed "s/^/$(date +%H:%M) /"   # monday: live profit above SWEEP keep_usd goes to your wallet
     if [ "$(date +%u)" = 1 ] && [ -n "$HAVE_CLAUDE" ]; then  # monday: the CEO review of last week, in the
       ($PY weeklyreview.py 7 2>&1 | sed "s/^/$(date +%H:%M) /") &   # background so exits never wait on it
     fi
