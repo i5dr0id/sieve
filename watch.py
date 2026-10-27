@@ -7,6 +7,14 @@ import book
 if not PAPER:
     import trade
 
+# live exits pay the priority fee: an unconfirmed sell is how a stop turns into a big loss (CHUNKEE, MFORGE, CHICO).
+# the urgent ones also accept 10% slippage, because getting out of a rug matters more than the last few % of price.
+URGENT = ("stop", "liquidity_pulled", "pool_gone", "manual_close")
+
+
+def exit_fee(why: str) -> dict:
+    return {"priority": True, **({"slippage_bps": 1000} if why in URGENT else {})}
+
 
 def watch() -> list[str]:
     events = []
@@ -23,7 +31,7 @@ def watch() -> list[str]:
                 book.sell(mint, 1.0, 0.0, "pool_gone")
             else:
                 try:
-                    pnl = trade.leave(mint, 1.0, 0.0, "pool_gone")
+                    pnl = trade.leave(mint, 1.0, 0.0, "pool_gone", **exit_fee("pool_gone"))
                     events.append(f"{p['symbol']}: pool gone, sold what was left, pnl ${pnl:+.2f}")
                 except Exception as e:
                     events.append(f"ERROR {p['symbol']}: pool gone and sell failed ({e}), retry next run")
@@ -42,7 +50,7 @@ def watch() -> list[str]:
         def out(frac, why, **live) -> bool:
             size = "the rest" if frac >= 1 else f"{int(frac * 100)}%"
             try:
-                pnl = book.sell(mint, frac, price, why) if PAPER else trade.leave(mint, frac, price, why, **live)
+                pnl = book.sell(mint, frac, price, why) if PAPER else trade.leave(mint, frac, price, why, **{**exit_fee(why), **live})
             except book.SellBusy:                        # another sell of this token is running. next run looks again
                 return False
             except Exception as e:                       # position stays in the book, next run retries
@@ -52,7 +60,7 @@ def watch() -> list[str]:
             return True
 
         if mint in manual:                               # the dashboard's Close button. a failed sell stays requested and retries
-            if out(1.0, "manual_close", slippage_bps=1000, priority=True):
+            if out(1.0, "manual_close"):
                 book.clear_close_request(mint)
             continue
         if m["liq_usd"] < s["liq0"] * (1 - EXIT["liq_drop_pct"] / 100):

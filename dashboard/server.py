@@ -16,6 +16,7 @@ HOST, PORT = os.environ.get("HOST", "127.0.0.1"), int(os.environ.get("PORT", 878
 HERE = os.path.dirname(os.path.abspath(__file__))
 _cache: dict = {}
 JUDGES = ("claude", "grok", "code")
+MOBILE = ("Android", "iPhone", "iPod", "Mobile")   # a phone at "/" gets the app (app.html); "/web" is the full page
 # a fresh secret each start. the page reads it from /api/state (same-origin only; a
 # cross-origin tab can't read that JSON), and must echo it to RESUME trading. pausing
 # needs no token: it only ever makes the desk safer.
@@ -46,7 +47,8 @@ def tail(path, n) -> list[str]:
 
 
 def followups(base) -> dict:
-    fu = rows(f"{base}/followups.csv")
+    # every verdict's +6h/+24h price. new ones are in logs/paper (shared); logs/live has the older live ones.
+    fu = sorted(rows("logs/paper/followups.csv") + rows("logs/live/followups.csv"), key=lambda r: r["decided"])
 
     def score(verdict, name, shadow=False):         # shadow = the AI judge that only watches
         done = [float(r[f"pct_{name}"]) for r in fu if r["verdict"] == verdict and r.get(f"pct_{name}")
@@ -102,9 +104,24 @@ def runner() -> dict:
     return {"running": running, "args": "forever" if running else None, "active_mode": "paper + live"}
 
 
+def totals(trades: list) -> dict:
+    """all-time realized P&L, and wins per position: an open starts one, its sales add up, a close ends it."""
+    cur, done = {}, []
+    for t in trades:
+        if t["action"] == "open":
+            cur[t["mint"]] = 0.0
+        else:
+            cur[t["mint"]] = cur.get(t["mint"], 0.0) + float(t["pnl"] or 0)
+            if t["action"] == "close":
+                done.append(cur.pop(t["mint"]))
+    return {"realized": sum(float(t["pnl"] or 0) for t in trades), "closed": len(done), "wins": sum(1 for p in done if p > 0)}
+
+
 def state(mode: str, day: str) -> dict:
     base = f"logs/{mode}"
-    checks = rows(f"{base}/checks.csv")
+    # the scan and the judges log once, to the shared decisions log (logs/paper, since 2026-10-27).
+    # logs/live/checks.csv is the live history from before that, so the live view reads both.
+    checks = sorted(rows(config.DECISIONS) + (rows(f"{base}/checks.csv") if mode == "live" else []), key=lambda r: r["time"])
     trades = rows(f"{base}/trades.csv")
     book = json.load(open(f"{base}/positions.json")) if os.path.exists(f"{base}/positions.json") else {}
 
@@ -158,6 +175,7 @@ def state(mode: str, day: str) -> dict:
         "pnl": {"realized": realized, "unrealized": sum(p["upnl"] or 0 for p in positions),
                 "closed": len(closed), "wins": sum(1 for t in closed if float(t["pnl"]) > 0)},
         "trades": trades[-50:][::-1],
+        "totals": totals(trades),
         "log": tail(f"{base}/session.log", 80)[::-1],
     }
 
@@ -196,8 +214,10 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
-        if u.path in ("/", "/index.html"):
-            return self.send(200, open(os.path.join(HERE, "index.html"), "rb").read(), "text/html; charset=utf-8")
+        if u.path in ("/", "/index.html", "/web", "/app"):
+            mobile = any(k in (self.headers.get("User-Agent") or "") for k in MOBILE)
+            page = "app.html" if u.path == "/app" or (u.path == "/" and mobile) else "index.html"
+            return self.send(200, open(os.path.join(HERE, page), "rb").read(), "text/html; charset=utf-8")
         if u.path == "/api/state":
             q = parse_qs(u.query)
             mode = q.get("mode", [config.MODE])[0]
@@ -260,8 +280,9 @@ class H(BaseHTTPRequestHandler):
             try:
                 if mint not in open_book(mode):
                     return reply(404, {"error": "not an open position"})
-                request_close(mode, mint)
-                return reply(200, {"ok": True})
+                part = 0.5 if data.get("part") == 0.5 else 1.0      # only "all" or "half": nothing else is accepted
+                request_close(mode, mint, part)
+                return reply(200, {"ok": True, "part": part})
             except Exception as e:
                 return reply(500, {"error": config.scrub(e)})
         if u.path == "/api/stop_live":
@@ -304,13 +325,15 @@ def set_pause(mode: str, on: bool):
         os.remove(flag)
 
 
-def request_close(mode: str, mint: str):
-    """record the request (the engine's fallback, retried every minute), then sell right now in close_now.py,
-    a separate process: only it reads the key, never this server."""
-    req = f"logs/{mode}/close_requests.json"
-    cur = set(json.load(open(req))) if os.path.exists(req) else set()
-    json.dump(sorted(cur | {mint}), open(req + ".tmp", "w")); os.replace(req + ".tmp", req)
-    subprocess.Popen([sys.executable, "close_now.py", mode, mint], cwd=os.path.dirname(HERE),
+def request_close(mode: str, mint: str, part: float = 1.0):
+    """sell right now in close_now.py, a separate process: only it reads the key, never this server.
+    a full close is also recorded as a request, the engine's fallback (retried every minute). a half sale is not:
+    that retry would close everything."""
+    if part >= 1:
+        req = f"logs/{mode}/close_requests.json"
+        cur = set(json.load(open(req))) if os.path.exists(req) else set()
+        json.dump(sorted(cur | {mint}), open(req + ".tmp", "w")); os.replace(req + ".tmp", req)
+    subprocess.Popen([sys.executable, "close_now.py", mode, mint, *([str(part)] if part < 1 else [])], cwd=os.path.dirname(HERE),
                      env={**os.environ, "SIEVE_MODE": mode}, stdin=subprocess.DEVNULL,
                      stdout=open(f"logs/{mode}/close_now.log", "a"), stderr=subprocess.STDOUT, start_new_session=True)
 

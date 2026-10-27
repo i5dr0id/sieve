@@ -1,8 +1,8 @@
 // Sieve PWA service worker.
 // Trading data must never be stale, so /api/* is ALWAYS network-only (never cached).
 // Only the app shell (page + icons + manifest) is cached, as an offline fallback.
-const SHELL = "sieve-shell-v1";
-const ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon.png"];
+const SHELL = "sieve-shell-v2";                // v2: phones get the app (app.html) at "/", the full page at "/web"
+const ASSETS = ["/", "/web", "/app", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon.png"];
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();

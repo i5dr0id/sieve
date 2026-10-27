@@ -333,7 +333,8 @@ async function load() {
         <td><div class="exitbar" title="stop −35% · take profit +100% / +200%">−35%<div class="t"><div class="m" style="left:${at}%"></div></div>+200% · ${p.steps} taken</div></td>
         <td class="num ${cls(liq)}">${pct(liq)}</td>
         <td>${p.closing ? '<button class="act" disabled>Closing…</button>'
-              : `<button class="act closebtn" data-mint="${esc(p.mint)}" data-sym="${esc(p.symbol)}">Close</button>`}</td></tr>`;
+              : `<button class="act closebtn halfbtn" data-part="0.5" data-mint="${esc(p.mint)}" data-sym="${esc(p.symbol)}">Sell ½</button>
+                 <button class="act closebtn" data-mint="${esc(p.mint)}" data-sym="${esc(p.symbol)}">Close</button>`}</td></tr>`;
     }), "No open positions.");
 
   // charts
@@ -429,16 +430,17 @@ $("#btn-pause").onclick = async () => {
 
 $("#positions").addEventListener("click", async ev => {
   const b = ev.target.closest(".closebtn"); if (!b) return;
-  const live = mode === "live";
-  if (!confirm(`Sell all of ${b.dataset.sym} now at market?` + (live ? " This is REAL money." : " (paper: pretend sale)"))) return;
-  b.disabled = true; b.textContent = "Closing…";
+  const live = mode === "live", half = b.dataset.part === "0.5", label = b.textContent;
+  if (!confirm(`Sell ${half ? "HALF of what you hold in" : "all of"} ${b.dataset.sym} now at market?` + (live ? " This is REAL money." : " (paper: pretend sale)"))) return;
+  b.disabled = true; b.textContent = half ? "Selling…" : "Closing…";
   try {
     const r = await fetch("/api/close", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, mint: b.dataset.mint, token }) });
+      body: JSON.stringify({ mode, mint: b.dataset.mint, token, part: half ? 0.5 : 1 }) });
     const j = await r.json();
-    if (j.error) { alert("Failed: " + j.error); b.disabled = false; b.textContent = "Close"; }
-    else { $("#pos-note").textContent = "selling now (priority close). if it fails, the desk keeps retrying every minute"; }
-  } catch (e) { alert("Server not reachable."); b.disabled = false; b.textContent = "Close"; }
+    if (j.error) { alert("Failed: " + j.error); b.disabled = false; b.textContent = label; }
+    else { $("#pos-note").textContent = half ? "selling half now (priority). check the trades table in a few seconds"
+                                             : "selling now (priority close). if it fails, the desk keeps retrying every minute"; }
+  } catch (e) { alert("Server not reachable."); b.disabled = false; b.textContent = label; }
 });
 
 $("#btn-stoplive").onclick = async () => {

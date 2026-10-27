@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sieve</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sieve">
+<link rel="apple-touch-icon" href="/icon.png">
+<style>
+/* the phone app. one file, no libraries: the desk runs on a LAN, often offline from the internet.
+   desktop and /web get index.html; this page is what a phone sees at "/". */
+:root {
+  --bg: #000; --surface: #1c1c1e; --surface-2: #2c2c2e; --sep: rgba(84,84,88,.6);
+  --text: #fff; --text-2: rgba(235,235,245,.6); --text-3: rgba(235,235,245,.3);
+  --accent: #0a84ff; --green: #30d158; --red: #ff453a; --orange: #ff9f0a;
+  --bar: rgba(22,22,24,.82); --sheet: #1c1c1e; --scrim: rgba(0,0,0,.5);
+  --tap: rgba(255,255,255,.08); --r: 14px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f2f2f7; --surface: #fff; --surface-2: #e9e9ee; --sep: rgba(60,60,67,.18);
+    --text: #000; --text-2: rgba(60,60,67,.6); --text-3: rgba(60,60,67,.3);
+    --accent: #007aff; --green: #248a3d; --red: #d70015; --orange: #c93400;
+    --bar: rgba(249,249,251,.86); --sheet: #fff; --scrim: rgba(0,0,0,.3); --tap: rgba(0,0,0,.06);
+    color-scheme: light;
+  }
+}
+html.android { --r: 18px; --accent: #8ab4f8; }
+@media (prefers-color-scheme: light) { html.android { --accent: #1a73e8; } }
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+  font: 17px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Google Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; overscroll-behavior: none; touch-action: manipulation; }
+html.android body { font-family: Roboto, "Google Sans", system-ui, sans-serif; font-size: 16px; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+a { color: var(--accent); text-decoration: none; }
+.num { font-variant-numeric: tabular-nums; }
+.up { color: var(--green); } .down { color: var(--red); } .muted { color: var(--text-2); }
+
+/* ---------- top bar: small title fades in once the large title scrolls away */
+.navbar { position: fixed; z-index: 20; top: 0; left: 0; right: 0; height: calc(44px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top); display: flex; align-items: center; justify-content: center;
+  background: transparent; transition: background .2s, box-shadow .2s; pointer-events: none; }
+.navbar .t { font-weight: 600; font-size: 17px; opacity: 0; transition: opacity .2s; }
+.navbar.solid { background: var(--bar); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: 0 .5px 0 var(--sep); }
+.navbar.solid .t { opacity: 1; }
+html.android .navbar { justify-content: flex-start; padding-left: 20px; }
+html.android .navbar .t { font-size: 20px; font-weight: 500; }
+
+/* ---------- pages (one scroll container per tab, so each keeps its own scroll position) */
+.page { position: fixed; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
+  padding: calc(env(safe-area-inset-top) + 52px) 16px calc(env(safe-area-inset-bottom) + 96px); display: none; }
+.page.on { display: block; animation: fade .18s ease-out; }
+@keyframes fade { from { opacity: .4; } to { opacity: 1; } }
+.large { display: flex; align-items: flex-end; justify-content: space-between; margin: 0 4px 14px; min-height: 41px; }
+.large h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: .37px; }
+html.android .large h1 { font-size: 30px; font-weight: 400; letter-spacing: 0; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 99px; font-size: 13px;
+  font-weight: 600; background: var(--surface); color: var(--text-2); white-space: nowrap; }
+.chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+.chip.on i { background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 25%, transparent); }
+.chip.paused i { background: var(--orange); } .chip.down i { background: var(--red); }
+
+/* ---------- hero card */
+.hero { background: var(--surface); border-radius: var(--r); padding: 18px 18px 16px; margin-bottom: 14px; }
+.hero .k { font-size: 13px; color: var(--text-2); font-weight: 500; }
+.hero .big { font-size: 40px; font-weight: 700; letter-spacing: -.5px; margin: 2px 0 2px; }
+.hero .sub { font-size: 15px; color: var(--text-2); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; padding-top: 14px;
+  border-top: .5px solid var(--sep); }
+.stats .v { font-size: 17px; font-weight: 600; margin-top: 2px; }
+.stats .k { font-size: 12px; }
+
+/* ---------- round quick actions, like a banking app */
+.actions { display: flex; justify-content: space-around; margin: 4px 0 22px; }
+.act { display: flex; flex-direction: column; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2);
+  font-weight: 500; min-width: 76px; }
+.act .c { width: 54px; height: 54px; border-radius: 50%; background: var(--surface); display: grid; place-items: center;
+  color: var(--accent); transition: transform .12s, background .12s; }
+.act:active .c { transform: scale(.92); background: var(--surface-2); }
+.act.danger .c { color: var(--red); } .act.warn .c { color: var(--orange); }
+.act[disabled] { opacity: .4; pointer-events: none; }
+.act svg { width: 24px; height: 24px; }
+
+/* ---------- grouped lists */
+.sec { margin: 0 4px 7px; font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: .3px;
+  display: flex; justify-content: space-between; }
+html.android .sec { text-transform: none; font-size: 14px; color: var(--accent); letter-spacing: 0; }
+.list { background: var(--surface); border-radius: var(--r); overflow: hidden; margin-bottom: 24px; }
+.row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 52px; position: relative; width: 100%; text-align: left; }
+.row + .row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; border-top: .5px solid var(--sep); }
+a.row { color: inherit; }
+button.row:active, a.row:active { background: var(--tap); }
+button.row[disabled] { opacity: .45; pointer-events: none; }
+.row .main { flex: 1; min-width: 0; }
+.row .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .meta { font-size: 13px; color: var(--text-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .end { text-align: right; flex-shrink: 0; }
+.row .end .a { font-weight: 600; font-size: 17px; }
+.row .end .b { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+.row .chev { color: var(--text-3); margin-left: -4px; }
+.row .val { color: var(--text-2); }
+.row .val.up { color: var(--green); } .row .val.down { color: var(--red); }
+.row.red .title { color: var(--red); }
+.row.link .title { color: var(--accent); font-weight: 500; }
+.empty { padding: 22px 16px; text-align: center; color: var(--text-2); font-size: 15px; }
+.avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 14px;
+  flex-shrink: 0; color: #fff; }
+.badge { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; letter-spacing: .3px; }
+.badge.buy { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); }
+.badge.skip { background: var(--surface-2); color: var(--text-2); }
+.closing { font-size: 12px; color: var(--orange); font-weight: 600; }
+.bar { height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: 7px; position: relative; overflow: hidden; }
+.bar b { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+
+/* ---------- switch (iOS shape; Material-ish on Android) */
+.sw { width: 51px; height: 31px; border-radius: 99px; background: var(--surface-2); position: relative; flex-shrink: 0; transition: background .2s; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25); transition: transform .22s cubic-bezier(.3,.7,.4,1.2); }
+.sw.on { background: var(--green); } .sw.on::after { transform: translateX(20px); }
+html.android .sw { width: 52px; height: 32px; } html.android .sw.on { background: var(--accent); }
+html.android .sw::after { top: 4px; left: 4px; width: 24px; height: 24px; } html.android .sw.on::after { transform: translateX(20px); }
+
+/* ---------- funnel */
+.funnel { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 24px; }
+.funnel div { background: var(--surface); border-radius: 12px; padding: 12px 6px; text-align: center; }
+.funnel .v { font-size: 22px; font-weight: 700; } .funnel .k { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.score { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 24px; }
+.score div { background: var(--surface); border-radius: 12px; padding: 12px 14px; }
+.score .v { font-size: 20px; font-weight: 700; } .score .k { font-size: 12px; color: var(--text-2); }
+
+/* ---------- tab bar */
+.tabbar { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; display: flex; padding: 6px 4px calc(env(safe-area-inset-bottom) + 4px);
+  background: var(--bar); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  box-shadow: 0 -.5px 0 var(--sep); }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; font-weight: 600;
+  color: var(--text-3); padding: 2px 0; position: relative; }
+.tab svg { width: 26px; height: 26px; }
+.tab.on { color: var(--accent); }
+.tab .dot { position: absolute; top: 0; right: calc(50% - 20px); min-width: 17px; height: 17px; border-radius: 99px; background: var(--red);
+  color: #fff; font-size: 11px; display: none; place-items: center; padding: 0 5px; }
+.tab .dot.show { display: grid; }
+html.android .tabbar { padding-top: 10px; padding-bottom: calc(env(safe-area-inset-bottom) + 10px); }
+html.android .tab { font-size: 12px; font-weight: 500; color: var(--text-2); gap: 4px; }
+html.android .tab svg { width: 24px; height: 24px; padding: 0; }
+html.android .tab .ic { width: 64px; height: 32px; border-radius: 16px; display: grid; place-items: center; transition: background .2s; }
+html.android .tab.on .ic { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+html.android .tab.on { color: var(--text); }
+
+/* ---------- bottom sheet */
+.scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .25s; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.sheet { position: fixed; z-index: 41; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow-y: auto; background: var(--sheet);
+  border-radius: 14px 14px 0 0; padding: 8px 16px calc(env(safe-area-inset-bottom) + 16px);
+  transform: translateY(105%); transition: transform .32s cubic-bezier(.2,.8,.2,1); overscroll-behavior: contain; }
+html.android .sheet { border-radius: 28px 28px 0 0; }
+.sheet.on { transform: translateY(0); }
+.sheet .grab { width: 36px; height: 5px; border-radius: 3px; background: var(--text-3); margin: 0 auto 12px; }
+.sheet h2 { margin: 4px 4px 4px; font-size: 22px; font-weight: 700; }
+.sheet .lead { margin: 0 4px 16px; color: var(--text-2); font-size: 15px; }
+.sheet .list { background: var(--bg); }
+@media (prefers-color-scheme: light) { .sheet .list { background: var(--bg); } }
+.btn { display: block; width: 100%; padding: 15px; border-radius: 12px; font-weight: 600; font-size: 17px; text-align: center;
+  background: var(--accent); color: #fff; margin-top: 8px; transition: transform .1s, opacity .1s; }
+.btn:active { transform: scale(.98); opacity: .85; }
+.btn.red { background: var(--red); } .btn.ghost { background: var(--surface-2); color: var(--text); }
+html.android .btn { border-radius: 99px; } html.android .btn:not(.red):not(.ghost) { color: #062e6f; }
+@media (prefers-color-scheme: light) { html.android .btn:not(.red):not(.ghost) { color: #fff; } }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.log { font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: var(--text-2);
+  background: var(--bg); border-radius: 12px; padding: 12px; }
+
+/* ---------- toast, pull-to-refresh, banners */
+.toast { position: fixed; z-index: 50; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 84px); padding: 14px 16px;
+  border-radius: 14px; background: var(--surface-2); color: var(--text); font-size: 15px; box-shadow: 0 8px 30px rgba(0,0,0,.3);
+  transform: translateY(20px); opacity: 0; transition: all .25s; pointer-events: none; }
+.toast.on { transform: none; opacity: 1; }
+.toast.bad { background: var(--red); color: #fff; }
+.ptr { position: fixed; z-index: 15; left: 50%; top: calc(env(safe-area-inset-top) + 50px); width: 34px; height: 34px; margin-left: -17px;
+  border-radius: 50%; background: var(--surface); display: grid; place-items: center; box-shadow: 0 2px 10px rgba(0,0,0,.2);
+  transform: translateY(-140px); opacity: 0; transition: transform .2s, opacity .2s; }
+.ptr svg { width: 18px; height: 18px; color: var(--accent); }
+.ptr.spin svg { animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.banner { border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; font-size: 14px; font-weight: 500; display: none; }
+.banner.show { display: block; }
+.banner.warn { background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--orange); }
+.banner.bad { background: color-mix(in srgb, var(--red) 18%, transparent); color: var(--red); }
+.skel { height: 120px; border-radius: var(--r); background: linear-gradient(90deg, var(--surface) 0, var(--surface-2) 50%, var(--surface) 100%);
+  background-size: 200% 100%; animation: sk 1.2s infinite; margin-bottom: 14px; }
+@keyframes sk { to { background-position: -200% 0; } }
+.foot { text-align: center; font-size: 12px; color: var(--text-3); margin-top: -8px; }
+</style>
+</head>
+<body>
+<div class="navbar" id="nav"><span class="t" id="nav-t">Live</span></div>
+<div class="ptr" id="ptr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div>
+
+<main>
+  <section class="page on" id="p-live"><div class="skel"></div><div class="skel" style="height:60px"></div><div class="skel"></div></section>
+  <section class="page" id="p-paper"></section>
+  <section class="page" id="p-feed"></section>
+  <section class="page" id="p-more"></section>
+</main>
+
+<nav class="tabbar" id="tabbar">
+  <button class="tab on" data-tab="live"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg></span>Live<span class="dot" id="dot-live"></span></button>
+  <button class="tab" data-tab="paper"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></span>Paper<span class="dot" id="dot-paper"></span></button>
+  <button class="tab" data-tab="feed"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg></span>Feed</button>
+  <button class="tab" data-tab="more"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>Settings</button>
+</nav>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const UA = navigator.userAgent;
+const PLAT = /iPhone|iPad|iPod/.test(UA) ? "ios" : "android";
+document.documentElement.classList.add(PLAT);
+const TITLES = { live: "Live", paper: "Paper", feed: "Feed", more: "Settings" };
+const S = { live: null, paper: null, token: null, tab: "live", fail: 0, busy: {} };
+
+// ---------- formatting
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const usd = (n, sign) => n == null || isNaN(n) ? "–" : (n < 0 ? "−$" : sign && n > 0 ? "+$" : "$") + Math.abs(n).toFixed(2);
+const pct = (n) => n == null || isNaN(n) ? "–" : (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(1) + "%";
+const cls = (n) => n > 0 ? "up" : n < 0 ? "down" : "";
+function px(n) {                                     // 0.0000123 -> 0.0₄123, the way chart sites show tiny prices
+  if (!n) return "–";
+  if (n >= 1) return n.toFixed(4);
+  const m = n.toFixed(14).match(/^0\.(0*)(\d{1,4})/);
+  if (!m) return n.toPrecision(4);
+  const z = m[1].length;
+  return z >= 3 ? `0.0<sub>${z}</sub>${m[2]}` : n.toPrecision(4);
+}
+const held = (h) => h < 1 ? Math.max(1, Math.round(h * 60)) + "m" : h < 24 ? Math.floor(h) + "h " + Math.round((h % 1) * 60) + "m" : Math.floor(h / 24) + "d";
+const hm = (t) => (t || "").slice(11, 16);
+const sym = (s) => esc(String(s || "?").replace(/[^\p{L}\p{N}$]/gu, "") || "?");
+function avatar(s) {
+  const t = String(s || "?").replace(/[^\p{L}\p{N}]/gu, "") || "?";
+  let h = 0; for (const c of t) h = (h * 31 + c.codePointAt(0)) % 360;
+  return `<div class="avatar" style="background:hsl(${h} 55% 42%)">${esc(t.slice(0, 2).toUpperCase())}</div>`;
+}
+const buzz = (ms = 8) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+const I = {
+  pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  sweep: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  chev: '<svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 1l6 6-6 6"/></svg>',
+  ext: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+};
+
+// ---------- data
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: S.token, ...body }) } : { cache: "no-store" });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error);
+  return j;
+}
+async function load(manual) {
+  try {
+    const [live, paper] = await Promise.all(["live", "paper"].map((m) => api(`/api/state?mode=${m}`)));
+    Object.assign(S, { live, paper, token: live.token, fail: 0, at: Date.now() });
+    render();
+    if (manual) toast("Up to date");
+  } catch (e) {
+    S.fail++;
+    render();
+    if (manual) toast("Can't reach the desk", true);
+  }
+}
+
+// ---------- pieces
+function hdr(title, chipHtml = "") { return `<div class="large"><h1>${title}</h1>${chipHtml}</div>`; }
+function engineChip(mode) {
+  if (S.fail && !S.live) return `<span class="chip down"><i></i>Offline</span>`;
+  const r = S.live.runner;
+  if (!r.running) return `<span class="chip down"><i></i>Engine down</span>`;
+  return S.live.paused_modes[mode] ? `<span class="chip paused"><i></i>Paused</span>` : `<span class="chip on"><i></i>${mode === "live" ? "Trading" : "Collecting"}</span>`;
+}
+function offline() {
+  return `<div class="banner bad ${S.fail ? "show" : ""}">Can't reach the desk${S.at ? " · showing data from " + new Date(S.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}. Are you on the home Wi-Fi?</div>`;
+}
+function posRows(st, mode) {
+  if (!st.positions.length) return `<div class="list"><div class="empty">No open positions</div></div>`;
+  return `<div class="list">` + st.positions.map((p, i) => {
+    const lo = -35, hi = 200, c = p.pct ?? 0, at = Math.max(0, Math.min(100, (c - lo) / (hi - lo) * 100)), z = (0 - lo) / (hi - lo) * 100;
+    const fill = c >= 0 ? `left:${z}%;width:${at - z}%;background:var(--green)` : `left:${at}%;width:${z - at}%;background:var(--red)`;
+    return `<button class="row" data-act="pos" data-mode="${mode}" data-i="${i}">
+      ${avatar(p.symbol)}
+      <div class="main"><div class="title">${sym(p.symbol)}</div>
+        <div class="meta">${p.closing ? '<span class="closing">Closing…</span>' : `${held(p.hours)} · ${p.steps} of 2 taken`}</div>
+        <div class="bar"><b style="${fill}"></b></div></div>
+      <div class="end num"><div class="a ${cls(p.pct)}">${pct(p.pct)}</div><div class="b">${usd(p.upnl, true)}</div></div>
+      <span class="chev">${I.chev}</span></button>`;
+  }).join("") + `</div>`;
+}
+function tradeRows(st, n = 12) {
+  const t = st.trades.slice(0, n);
+  if (!t.length) return `<div class="list"><div class="empty">No trades yet</div></div>`;
+  return `<div class="list">` + t.map((r) => {
+    const open = r.action === "open", p = parseFloat(r.pnl);
+    const what = open ? "Bought" : r.action === "partial" ? "Sold part" : "Sold";
+    const why = open ? "" : " · " + esc(String(r.reason || "").replace(/_/g, " "));
+    const tag = r.tx ? "a" : "div";
+    return `<${tag} class="row" ${r.tx ? `href="${esc(r.tx)}" target="_blank" rel="noopener"` : ""}>
+      ${avatar(r.symbol)}
+      <div class="main"><div class="title">${sym(r.symbol)}</div><div class="meta">${what}${why} · ${esc(r.time.slice(5, 16))}</div></div>
+      <div class="end num"><div class="a ${open ? "" : cls(p)}">${open ? usd(parseFloat(r.usd)) : usd(p, true)}</div>
+        <div class="b">${open ? "entry" : usd(parseFloat(r.usd)) + " back"}</div></div></${tag}>`;
+  }).join("") + `</div>`;
+}
+const winrate = (t) => t.closed ? Math.round(t.wins / t.closed * 100) + "%" : "–";
+
+// ---------- tabs
+function renderLive() {
+  const s = S.live, w = s.wallet || {}, sw = s.sweep || {}, paused = s.paused_modes.live, t = s.totals || {};
+  return hdr("Live", engineChip("live")) + offline() +
+    `<div class="banner warn ${paused ? "show" : ""}">Live buys are paused. Open trades keep their exits, and paper keeps collecting data.</div>
+    <div class="hero">
+      <div class="k">Wallet</div>
+      <div class="big num">${usd(w.usd)}</div>
+      <div class="sub num">${w.sol != null ? w.sol.toFixed(4) + " SOL" : "–"}${t.realized != null ? ` · all-time <span class="${cls(t.realized)}">${usd(t.realized, true)}</span>` : ""}</div>
+      <div class="stats num">
+        <div><div class="k muted">Today</div><div class="v ${cls(s.pnl.realized)}">${usd(s.pnl.realized, true)}</div></div>
+        <div><div class="k muted">Open P&L</div><div class="v ${cls(s.pnl.unrealized)}">${usd(s.pnl.unrealized, true)}</div></div>
+        <div><div class="k muted">Win rate</div><div class="v">${winrate(t)}</div></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="act ${paused ? "" : "warn"}" data-act="pause" data-mode="live"><span class="c">${paused ? I.play : I.pause}</span>${paused ? "Resume" : "Pause"}</button>
+      <button class="act danger" data-act="stopall" ${s.positions.length || !paused ? "" : "disabled"}><span class="c">${I.stop}</span>Stop all</button>
+      <button class="act" data-act="sweep" ${sw.to && sw.ready ? "" : "disabled"}><span class="c">${I.sweep}</span>${sw.ready ? "Sweep " + usd(sw.usd) : "Sweep"}</button>
+    </div>
+    <div class="sec"><span>Open positions</span><span>${s.positions.length} of 2</span></div>${posRows(s, "live")}
+    <div class="sec"><span>Recent trades</span></div>${tradeRows(s)}
+    <div class="foot">Updated ${esc(hm(s.now))}</div>`;
+}
+function renderPaper() {
+  const s = S.paper, paused = s.paused_modes.paper, t = s.totals || {};
+  return hdr("Paper", engineChip("paper")) + offline() +
+    `<div class="banner warn ${paused ? "show" : ""}">Paper fills are paused. The scan and the judge keep logging every decision.</div>
+    <div class="hero">
+      <div class="k">All-time paper P&L</div>
+      <div class="big num ${cls(t.realized)}">${usd(t.realized, true)}</div>
+      <div class="sub num">${t.closed || 0} closed · ${t.wins || 0} won · since Oct 18</div>
+      <div class="stats num">
+        <div><div class="k muted">Today</div><div class="v ${cls(s.pnl.realized)}">${usd(s.pnl.realized, true)}</div></div>
+        <div><div class="k muted">Open P&L</div><div class="v ${cls(s.pnl.unrealized)}">${usd(s.pnl.unrealized, true)}</div></div>
+        <div><div class="k muted">Win rate</div><div class="v">${winrate(t)}</div></div>
+      </div>
+    </div>
+    <div class="sec"><span>Open positions</span><span>${s.positions.length}</span></div>${posRows(s, "paper")}
+    <div class="sec"><span>Recent trades</span></div>${tradeRows(s)}
+    <div class="foot">Paper fills every BUY verdict · same exits as live</div>`;
+}
+function renderFeed() {
+  const s = S.paper, f = s.funnel, fu = s.followups;
+  const sc = (x) => x && x.n ? `<span class="${cls(x.avg)}">${pct(x.avg)}</span>` : "–";
+  const dec = s.decisions.slice(0, 15);
+  return hdr("Feed") + offline() +
+    `<div class="sec"><span>Today</span><span>one scan · one judge</span></div>
+    <div class="funnel num">
+      <div><div class="v">${f.checked}</div><div class="k">checked</div></div>
+      <div><div class="v">${f.killed_facts + f.killed_pool}</div><div class="k">killed</div></div>
+      <div><div class="v">${f.reviewed}</div><div class="k">passed</div></div>
+      <div><div class="v up">${f.bought}</div><div class="k">bought</div></div>
+    </div>
+    <div class="sec"><span>Did the judge get it right?</span><span>avg after 6h</span></div>
+    <div class="score num">
+      <div><div class="v">${sc(fu.buy_6h)}</div><div class="k">BUY calls · ${fu.buy_6h.n} done</div></div>
+      <div><div class="v">${sc(fu.skip_6h)}</div><div class="k">SKIP calls · ${fu.skip_6h.n} done</div></div>
+    </div>
+    <div class="sec"><span>Latest decisions</span></div>
+    <div class="list">${dec.length ? dec.map((r, i) => `<button class="row" data-act="dec" data-i="${i}">
+        ${avatar(r.symbol)}
+        <div class="main"><div class="title">${sym(r.symbol)}</div><div class="meta">${esc(String(r.reason || "").replace(/^\[code\] /, ""))}</div></div>
+        <div class="end"><span class="badge ${r.verdict === "BUY" ? "buy" : "skip"}">${esc(r.verdict)}</span><div class="b">${esc(hm(r.time))}</div></div></button>`).join("")
+      : `<div class="empty">No decisions yet</div>`}</div>
+    <div class="sec"><span>Most common kills today</span></div>
+    <div class="list">${s.kills.length ? s.kills.slice(0, 6).map(([k, n]) => `<div class="row"><div class="main"><div class="title" style="font-weight:500">${esc(String(k).replace(/^danger:/, "").replace(/_/g, " "))}</div></div><div class="val num">${n}</div></div>`).join("")
+      : `<div class="empty">Nothing killed yet today</div>`}</div>`;
+}
+function renderMore() {
+  const s = S.live, sw = s.sweep || {}, pm = s.paused_modes;
+  return hdr("Settings") + offline() +
+    `<div class="sec"><span>Trading</span></div>
+    <div class="list">
+      <button class="row" data-act="pause" data-mode="live"><div class="main"><div class="title">Live buys</div><div class="meta">Real money · max 2 open, $7 daily loss halt</div></div><span class="sw ${pm.live ? "" : "on"}"></span></button>
+      <button class="row" data-act="pause" data-mode="paper"><div class="main"><div class="title">Paper buys</div><div class="meta">Pretend fills for backtesting</div></div><span class="sw ${pm.paper ? "" : "on"}"></span></button>
+    </div>
+    <div class="sec"><span>Profit sweep</span></div>
+    ${!sw.to ? `<div class="list"><div class="row"><div class="main"><div class="title" style="font-weight:500">Not set up</div><div class="meta">Add SWEEP_TO_ADDRESS to the desk's .env</div></div></div></div>` : `<div class="list">
+      <div class="row"><div class="main"><div class="title" style="font-weight:500">Sends to</div></div><div class="val num">${esc(sw.to)}</div></div>
+      <div class="row"><div class="main"><div class="title" style="font-weight:500">Bot keeps</div></div><div class="val num">${usd(sw.keep_usd)}</div></div>
+      <div class="row"><div class="main"><div class="title" style="font-weight:500">Automatic</div></div><div class="val">Mondays, after midnight</div></div>
+      <button class="row link" data-act="sweep" ${sw.to && sw.ready ? "" : "disabled"}><div class="main"><div class="title">${sw.ready ? "Sweep " + usd(sw.usd) + " now" : "Nothing above " + usd(sw.keep_usd) + " to sweep"}</div></div></button>
+    </div>`}
+    <div class="sec"><span>Engine</span></div>
+    <div class="list">
+      <div class="row"><div class="main"><div class="title" style="font-weight:500">Status</div></div><div class="val">${s.runner.running ? "Running" : "Not running"}</div></div>
+      <button class="row" data-act="log" data-mode="live"><div class="main"><div class="title" style="font-weight:500">Live log</div></div><span class="chev">${I.chev}</span></button>
+      <button class="row" data-act="log" data-mode="paper"><div class="main"><div class="title" style="font-weight:500">Engine log</div><div class="meta">Every scan, verdict and fill</div></div><span class="chev">${I.chev}</span></button>
+    </div>
+    <div class="sec"><span>Data</span></div>
+    <div class="list">
+      <a class="row link" href="/api/export?mode=live"><div class="main"><div class="title">Export live logs</div></div></a>
+      <a class="row link" href="/api/export?mode=paper"><div class="main"><div class="title">Export paper logs</div></div></a>
+      <a class="row link" href="/web"><div class="main"><div class="title">Open the full desktop view</div></div><span class="chev">${I.ext}</span></a>
+    </div>
+    <div class="list"><button class="row red" data-act="stopall"><div class="main"><div class="title">Stop live and sell everything</div></div></button></div>
+    <div class="foot">Sieve · updated ${esc(hm(s.now))}</div>`;
+}
+function render() {
+  if (!S.live) {
+    if (S.fail) $("#p-live").innerHTML = hdr("Live", engineChip("live")) + offline();
+    return;
+  }
+  $("#p-live").innerHTML = renderLive();
+  $("#p-paper").innerHTML = renderPaper();
+  $("#p-feed").innerHTML = renderFeed();
+  $("#p-more").innerHTML = renderMore();
+  const n = (st) => st.positions.length;
+  for (const m of ["live", "paper"]) { const d = $("#dot-" + m); d.textContent = n(S[m]); d.classList.toggle("show", n(S[m]) > 0); }
+  if (sheetRefresh) sheetRefresh();
+}
+
+// ---------- sheet + toast
+let sheetRefresh = null;
+function sheet(html, refresh) {
+  const el = $("#sheet");
+  el.innerHTML = `<div class="grab"></div>` + html;
+  el.scrollTop = 0;
+  sheetRefresh = refresh || null;
+  $("#scrim").classList.add("on"); el.classList.add("on"); el.style.transform = "";
+  buzz();
+}
+function closeSheet() { $("#scrim").classList.remove("on"); $("#sheet").classList.remove("on"); $("#sheet").style.transform = ""; sheetRefresh = null; }
+$("#scrim").onclick = closeSheet;
+(() => {                                             // drag the sheet down to dismiss
+  const el = $("#sheet"); let y0 = null, dy = 0;
+  el.addEventListener("touchstart", (e) => { if (el.scrollTop <= 0) { y0 = e.touches[0].clientY; dy = 0; el.style.transition = "none"; } }, { passive: true });
+  el.addEventListener("touchmove", (e) => { if (y0 == null) return; dy = Math.max(0, e.touches[0].clientY - y0); if (dy > 0) el.style.transform = `translateY(${dy}px)`; }, { passive: true });
+  el.addEventListener("touchend", () => { el.style.transition = ""; if (y0 != null && dy > 90) closeSheet(); else el.style.transform = ""; y0 = null; });
+})();
+let toastT;
+function toast(msg, bad) {
+  const t = $("#toast"); t.textContent = msg; t.classList.toggle("bad", !!bad); t.classList.add("on");
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 3200);
+}
+const row = (k, v, c = "") => `<div class="row"><div class="main"><div class="title" style="font-weight:500">${k}</div></div><div class="val num ${c}">${v}</div></div>`;
+
+// ---------- actions
+const ACT = {
+  pos(btn) {
+    const mode = btn.dataset.mode, i = +btn.dataset.i, p = S[mode].positions[i];
+    if (!p) return;
+    const draw = () => {
+      const q = S[mode].positions.find((x) => x.mint === p.mint);
+      if (!q) { $("#sheet").innerHTML = `<div class="grab"></div><h2>${sym(p.symbol)}</h2><p class="lead">This position is closed.</p><button class="btn ghost" data-act="dismiss">Done</button>`; return; }
+      const liq = q.liq_now && q.liq0 ? (q.liq_now / q.liq0 - 1) * 100 : null;
+      const peak = (q.peak / q.entry - 1) * 100;
+      $("#sheet").innerHTML = `<div class="grab"></div>
+        <h2>${sym(q.symbol)} <span class="${cls(q.pct)} num" style="font-weight:600">${pct(q.pct)}</span></h2>
+        <p class="lead">${mode === "live" ? "Real money" : "Paper"} · held ${held(q.hours)}${q.closing ? ' · <span class="closing">closing…</span>' : ""}</p>
+        <div class="list">${row("Unrealized", usd(q.upnl, true), cls(q.upnl))}${row("Entry", px(q.entry))}${row("Now", px(q.now))}
+          ${row("Peak", pct(peak), cls(peak))}${row("Pool vs entry", pct(liq), cls(liq))}${row("Ladder sales", q.steps + " of 2")}</div>
+        <div class="list">${row("Stop", "−35%")}${row("Take profit", "+100% (½), +200% (¼)")}${row("Trailing stop", "30% from peak")}</div>
+        ${q.url ? `<a class="btn ghost" href="${esc(q.url)}" target="_blank" rel="noopener">View chart</a>` : ""}
+        <button class="btn ghost" data-act="close" data-part="0.5" data-mode="${mode}" data-mint="${esc(q.mint)}" ${q.closing ? "disabled" : ""}>Sell half</button>
+        <button class="btn red" data-act="close" data-mode="${mode}" data-mint="${esc(q.mint)}" ${q.closing ? "disabled" : ""}>${q.closing ? "Closing…" : mode === "live" ? "Sell all now" : "Close position"}</button>
+        ${mode === "live" ? `<p class="lead" style="margin-top:10px;text-align:center;font-size:13px">Sells at market with a priority fee, in seconds.</p>` : ""}`;
+    };
+    sheet("", draw); draw();
+  },
+  async close(btn) {
+    const { mode, mint } = btn.dataset, half = btn.dataset.part === "0.5";
+    btn.disabled = true; btn.textContent = "Selling…"; buzz(15);
+    try {
+      await api("/api/close", { mode, mint, part: half ? 0.5 : 1 });
+      toast(half ? (mode === "live" ? "Selling half now. Check Recent trades in a few seconds." : "Sold half (paper)")
+                 : (mode === "live" ? "Selling now. The desk confirms within seconds." : "Closed (paper)"));
+      setTimeout(load, 2500); setTimeout(load, 8000);
+    }
+    catch (e) { toast("Couldn't close: " + e.message, true); btn.disabled = false; btn.textContent = "Try again"; }
+  },
+  pause(btn) {
+    const mode = btn.dataset.mode, paused = S.live.paused_modes[mode];
+    if (!paused) return doPause(mode, true);         // pausing is always safe: no question asked
+    sheet(`<h2>Resume ${mode} buys?</h2>
+      <p class="lead">${mode === "live" ? "The desk will spend real money again: $5 a trade, at most 2 open, stops for the day after a $7 loss." : "Paper will fill every BUY verdict again."}</p>
+      <button class="btn" data-act="resume" data-mode="${mode}">Resume ${mode}</button><button class="btn ghost" data-act="dismiss">Cancel</button>`);
+  },
+  resume(btn) { closeSheet(); doPause(btn.dataset.mode, false); },
+  stopall() {
+    const n = S.live.positions.length;
+    sheet(`<h2>Stop live?</h2>
+      <p class="lead">Pauses live buys${n ? ` and sells ${n === 1 ? "the open position" : "all " + n + " open positions"} now, at market` : ""}. Paper keeps running.</p>
+      <button class="btn red" data-act="stopnow">${n ? "Stop and sell " + n : "Stop live buys"}</button><button class="btn ghost" data-act="dismiss">Cancel</button>`);
+  },
+  async stopnow(btn) {
+    btn.disabled = true; buzz(20);
+    try { const j = await api("/api/stop_live", {}); closeSheet(); toast(j.closing ? `Live stopped. Selling ${j.closing} now.` : "Live buys stopped."); load(); }
+    catch (e) { toast("Couldn't stop: " + e.message, true); btn.disabled = false; }
+  },
+  sweep() {
+    const sw = S.live.sweep;
+    if (!sw || !sw.ready) return;
+    sheet(`<h2>Sweep ${usd(sw.usd)}</h2>
+      <p class="lead">Sends ${sw.sol.toFixed(4)} SOL to your main wallet. The bot keeps ${usd(sw.keep_usd)} for trading.</p>
+      <div class="list">${row("To", esc(sw.to))}${row("Amount", sw.sol.toFixed(4) + " SOL")}</div>
+      <button class="btn" data-act="sweepnow">Send ${usd(sw.usd)}</button><button class="btn ghost" data-act="dismiss">Cancel</button>`);
+  },
+  async sweepnow(btn) {
+    btn.disabled = true; btn.textContent = "Sending…"; buzz(15);
+    try { const j = await api("/api/sweep", {}); closeSheet(); toast(String(j.result).replace(/ https:\S+/, ""), !/^SWEEP sent/.test(j.result)); load(); }
+    catch (e) { toast("Sweep failed: " + e.message, true); btn.disabled = false; btn.textContent = "Try again"; }
+  },
+  dec(btn) {
+    const r = S.paper.decisions[+btn.dataset.i];
+    if (!r) return;
+    sheet(`<h2>${sym(r.symbol)} <span class="badge ${r.verdict === "BUY" ? "buy" : "skip"}">${esc(r.verdict)}</span></h2>
+      <p class="lead">${esc(r.time)} · ${esc(r.stage)} judge</p>
+      <div class="list"><div class="row"><div class="main"><div class="meta" style="white-space:normal;font-size:15px;color:var(--text)">${esc(r.reason)}</div></div></div></div>
+      <a class="btn ghost" href="https://dexscreener.com/solana/${esc(r.mint)}" target="_blank" rel="noopener">View chart</a>
+      <button class="btn ghost" data-act="dismiss">Done</button>`);
+  },
+  log(btn) {
+    const st = S[btn.dataset.mode];
+    sheet(`<h2>${btn.dataset.mode === "live" ? "Live log" : "Engine log"}</h2><p class="lead">Newest first</p>
+      <div class="log">${esc(st.log.slice(0, 80).join("\n")) || "Empty"}</div><button class="btn ghost" data-act="dismiss">Done</button>`);
+  },
+  dismiss() { closeSheet(); },
+};
+async function doPause(mode, on) {
+  buzz();
+  try { await api("/api/pause", { mode, on }); toast(on ? `${mode === "live" ? "Live" : "Paper"} buys paused` : `${mode === "live" ? "Live" : "Paper"} buys resumed`); load(); }
+  catch (e) { toast("Failed: " + e.message, true); }
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]");
+  if (!b || b.disabled) return;
+  const f = ACT[b.dataset.act];
+  if (f) { e.preventDefault(); f(b); }
+});
+
+// ---------- tabs, collapsing title, pull to refresh
+function show(tab) {
+  if (tab === S.tab) { const p = $("#p-" + tab); p.scrollTo({ top: 0, behavior: "smooth" }); return; }   // tap again: scroll to top
+  S.tab = tab; buzz(5);
+  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("on", p.id === "p-" + tab));
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.dataset.tab === tab));
+  $("#nav-t").textContent = TITLES[tab];
+  onScroll();
+  try { localStorage.setItem("sieve.tab", tab); } catch {}
+}
+document.querySelectorAll(".tab").forEach((t) => t.onclick = () => show(t.dataset.tab));
+function onScroll() { $("#nav").classList.toggle("solid", $("#p-" + S.tab).scrollTop > 34); }
+document.querySelectorAll(".page").forEach((p) => {
+  p.addEventListener("scroll", onScroll, { passive: true });
+  let y0 = null, dy = 0;
+  const ptr = $("#ptr");
+  p.addEventListener("touchstart", (e) => { if (p.scrollTop <= 0) { y0 = e.touches[0].clientY; dy = 0; } }, { passive: true });
+  p.addEventListener("touchmove", (e) => {
+    if (y0 == null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy > 0 && p.scrollTop <= 0) { ptr.style.transition = "none"; ptr.style.opacity = 1; ptr.style.transform = `translateY(${Math.min(dy * .5, 70) - 80}px) rotate(${dy * 2}deg)`; }
+  }, { passive: true });
+  p.addEventListener("touchend", async () => {
+    if (y0 == null) return;
+    ptr.style.transition = "";
+    if (dy > 110) { buzz(10); ptr.style.transform = "translateY(-10px)"; ptr.classList.add("spin"); await load(true); }
+    ptr.classList.remove("spin"); ptr.style.transform = ""; ptr.style.opacity = ""; y0 = null;
+  });
+});
+
+try { const t = (location.hash.match(/tab=(\w+)/) || [])[1] || localStorage.getItem("sieve.tab"); if (t && TITLES[t]) show(t); } catch {}
+load();
+setInterval(() => { if (!document.hidden) load(); }, 15000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+</script>
+</body>
+</html>
