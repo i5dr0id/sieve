@@ -142,7 +142,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Sieve <small>Solana memecoin desk · read-only monitor</small></h1>
+    <h1>Sieve <small>Solana memecoin desk · paper + live</small></h1>
     <div class="controls">
       <div class="seg" role="group" aria-label="Mode">
         <button data-mode="paper" aria-pressed="true">Paper</button>
@@ -151,12 +151,13 @@
       <input type="date" id="day" aria-label="Day">
       <span class="pill" id="runner"><span class="dot"></span><span>…</span></span>
       <span class="pill" id="updated">loading…</span>
-      <button class="act" id="btn-pause" title="Pause new buys (open trades keep their exits)">⏸ Stop buys</button>
+      <button class="act" id="btn-pause" title="Pause new buys in this mode (open trades keep their exits)">⏸ Pause buys</button>
+      <button class="act" id="btn-stoplive" style="display:none" title="Pause live buys AND sell every open live position now">■ Stop live · sell all</button>
       <button class="act" id="btn-export" title="Download this mode's logs as a .tar.gz">⬇ Export logs</button>
     </div>
   </header>
 
-  <div class="banner paused-banner" id="paused-banner" style="display:none">⏸ <b>Buys paused.</b> No new positions will open. Open trades keep their exits. Tap “Resume buys” to re-enable.</div>
+  <div class="banner paused-banner" id="paused-banner" style="display:none"></div>
   <div class="banner" id="pending"></div>
 
   <div class="grid tiles">
@@ -283,11 +284,11 @@ async function load() {
 
   const run = s.runner;
   $("#runner").innerHTML = `<span class="dot ${run.running ? "on" : "off"}"></span>` +
-    (run.running ? `Session running · until ${esc(run.args || "?")} · <span class="mode-tag ${run.active_mode}">${run.active_mode}</span>`
-                 : `No session running · active mode <span class="mode-tag ${run.active_mode}">${run.active_mode}</span>`);
+    (run.running ? `Engine running · paper ${s.paused_modes.paper ? "paused" : "on"} · live ${s.paused_modes.live ? "paused" : "on"}`
+                 : `Engine NOT running`);
   $("#updated").textContent = "updated " + s.now.slice(11, 19);
 
-  // pause state (global: affects both modes)
+  // pause state of the mode on screen
   token = s.token; paused = !!s.paused;
   renderPause();
 
@@ -317,7 +318,7 @@ async function load() {
   // positions
   $("#pos-note").textContent = mode === "paper" ? "pretend fills" : "real money";
   table($("#positions"),
-    [["Token"], ["Entry", "num"], ["Now", "num"], ["Change", "num"], ["Unrealized", "num"], ["Held", "num"], ["Exits"], ["Pool vs entry", "num"]],
+    [["Token"], ["Entry", "num"], ["Now", "num"], ["Change", "num"], ["Unrealized", "num"], ["Held", "num"], ["Exits"], ["Pool vs entry", "num"], [""]],
     s.positions.map(p => {
       const c = p.pct;
       // marker on a -35%..+200% scale: stop on the left, ladder on the right
@@ -329,7 +330,9 @@ async function load() {
         <td class="num ${cls(c)}">${pct(c)}</td><td class="num ${cls(p.upnl)}">${sgn(p.upnl)}</td>
         <td class="num">${p.hours.toFixed(1)}h</td>
         <td><div class="exitbar" title="stop −35% · take profit +100% / +200%">−35%<div class="t"><div class="m" style="left:${at}%"></div></div>+200% · ${p.steps} taken</div></td>
-        <td class="num ${cls(liq)}">${pct(liq)}</td></tr>`;
+        <td class="num ${cls(liq)}">${pct(liq)}</td>
+        <td>${p.closing ? '<button class="act" disabled>Closing…</button>'
+              : `<button class="act closebtn" data-mint="${esc(p.mint)}" data-sym="${esc(p.symbol)}">Close</button>`}</td></tr>`;
     }), "No open positions.");
 
   // charts
@@ -395,19 +398,51 @@ async function load() {
 function renderPause() {
   const b = $("#btn-pause");
   b.classList.toggle("paused", paused);
-  b.textContent = paused ? "▶ Resume buys" : "⏸ Stop buys";
-  $("#paused-banner").style.display = paused ? "block" : "none";
+  b.textContent = (paused ? "▶ Resume " : "⏸ Pause ") + mode + " buys";
+  $("#btn-stoplive").style.display = mode === "live" ? "" : "none";
+  const pbn = $("#paused-banner");
+  pbn.innerHTML = `⏸ <b>${mode === "live" ? "Live" : "Paper"} buys paused.</b> No new ${mode} positions will open. Open trades keep their exits.` +
+    (mode === "live" ? " Paper keeps collecting data." : " Live is not affected.");
+  pbn.style.display = paused ? "block" : "none";
 }
 
 $("#btn-pause").onclick = async () => {
   const turningOn = !paused;
-  if (!turningOn && !confirm("Resume new buys? The desk will open new positions again.")) return;
+  if (!turningOn && !confirm(mode === "live" ? "Resume LIVE buys? The desk will spend real money again."
+                                              : "Resume paper buys?")) return;
   const b = $("#btn-pause"); b.disabled = true;
   try {
     const r = await fetch("/api/pause", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ on: turningOn, token }) });
+      body: JSON.stringify({ on: turningOn, token, mode }) });
     const j = await r.json();
     if (j.error) { alert("Failed: " + j.error); } else { paused = !!j.paused; renderPause(); }
+  } catch (e) { alert("Server not reachable."); }
+  b.disabled = false;
+};
+
+$("#positions").addEventListener("click", async ev => {
+  const b = ev.target.closest(".closebtn"); if (!b) return;
+  const live = mode === "live";
+  if (!confirm(`Sell all of ${b.dataset.sym} now at market?` + (live ? " This is REAL money." : " (paper: pretend sale)"))) return;
+  b.disabled = true; b.textContent = "Closing…";
+  try {
+    const r = await fetch("/api/close", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, mint: b.dataset.mint, token }) });
+    const j = await r.json();
+    if (j.error) { alert("Failed: " + j.error); b.disabled = false; b.textContent = "Close"; }
+    else { $("#pos-note").textContent = "selling now (priority close). if it fails, the desk keeps retrying every minute"; }
+  } catch (e) { alert("Server not reachable."); b.disabled = false; b.textContent = "Close"; }
+});
+
+$("#btn-stoplive").onclick = async () => {
+  if (!confirm("STOP LIVE: pause live buys AND sell every open live position now, at market? Paper keeps running.")) return;
+  const b = $("#btn-stoplive"); b.disabled = true;
+  try {
+    const r = await fetch("/api/stop_live", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }) });
+    const j = await r.json();
+    if (j.error) alert("Failed: " + j.error);
+    else { alert(`Live stopped. Selling ${j.closing} open position${j.closing === 1 ? "" : "s"} now.`); load(); }
   } catch (e) { alert("Server not reachable."); }
   b.disabled = false;
 };

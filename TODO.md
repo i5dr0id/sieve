@@ -21,6 +21,8 @@ Already done on 2026-10-20:
 **Steps:**
 - [ ] **Fix the backtest's "24h" label** in `backtest.py`. It measures the last price available, not 24 hours later. Either name the column after the hours it really covers, or require the full 24 hours and count tokens without enough data separately.
 - [ ] **Run the backtest weekly** on all new tokens: `.venv/bin/python backtest.py`.
+- [ ] **Re-run `research/backtest_filters.py` at about 150 passed tokens** (about 2026-11-05; 63 on 2026-10-26, copy the phone's logs first). Also compare the code judge against "buy everything that passes the 13 checks": on 63 tokens the judge's buys averaged -$0.65 each vs -$0.24 for all passes. Don't ship the top10 / correlation / volume filters before then: they were fitted to the same 63 tokens.
+- A 90-day backtest isn't possible: the rug-check data was never stored as it was at the time. Bitquery's free pump.fun samples are one day, a few slots, one token (full history is paid). Decision 2026-10-26: keep collecting live paper data.
 - [ ] **Score each code-judge rule** (`CODE_JUDGE` in `config.py`). For each rule, check what the tokens it skipped did over 6h and 24h:
   - `max_vol_to_liq_1h` (5×)
   - `sells_over_buys_1h`

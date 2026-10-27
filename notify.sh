@@ -2,7 +2,8 @@
 # mac notifications for the live desk: every buy, sell, error and daily report. free, no Claude.
 #   (nohup ./notify.sh > /dev/null 2>&1 < /dev/null &)      stop: pkill -f notify.sh
 cd "$(dirname "$0")"
-LOG=$(.venv/bin/python -c "import config; print(config.SESSION_LOG)")
+LOG=logs/live/session.log         # live buys, sells and reports (run.sh copies them here)
+mkdir -p logs/live && touch "$LOG"
 
 # notify by whatever this device has: macOS osascript, or Termux's termux-notification
 # (needs the Termux:API app + `pkg install termux-api`).

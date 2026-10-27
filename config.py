@@ -26,10 +26,17 @@ def scrub(text) -> str:
 MODEL = "grok-4.7"          # check console.x.ai -> Models if the API rejects it
 PAPER = False               # LIVE since 2026-10-20. paper settings saved in logs/config_paper_backup.py
 
+# the engine runs BOTH modes every cycle: run.sh sets SIEVE_MODE for each step. PAPER above is only the
+# default for commands you type yourself, like `python trade.py status`.
+if os.environ.get("SIEVE_MODE") in ("paper", "live"):
+    PAPER = os.environ["SIEVE_MODE"] == "paper"
+PAPER_LIMITS = False        # False: paper fills every BUY verdict (the most data). MAX_OPEN, entries/day and the
+                            # loss halt are live-money rules. True: paper obeys them too, to copy live exactly.
+
 TICKET_USD = 5              # flat. never sized off the last win
-MAX_OPEN = 3                # 3 x $5 = $15 in the market, max
+MAX_OPEN = 2                # 2 x $5 = $10 in the market, max (was 3 until 2026-10-27)
 MAX_ENTRIES_PER_DAY = 4
-DAILY_LOSS_HALT_USD = 10    # realized loss today hits this -> no new entries until tomorrow
+DAILY_LOSS_HALT_USD = 7     # live realized loss today hits this -> no new live entries until tomorrow. paper keeps going
 COOLDOWN_HOURS = 24         # no re-entry into a token you just left
 
 FACTS = {                   # the rug filter. code only, no model
@@ -96,10 +103,11 @@ TRADES = f"logs/{MODE}/trades.csv"
 SESSION_LOG = f"logs/{MODE}/session.log"
 FOLLOWUPS = f"logs/{MODE}/followups.csv"
 SHADOW = f"logs/{MODE}/shadow.csv"         # the AI judge that only watches (shadowjudge.py)
-PAUSE_FLAG = "logs/PAUSE_BUYS"             # if this file exists, no NEW buys. exits keep running. set by the dashboard's Stop button.
+PAUSE_FLAG = f"logs/{MODE}/PAUSE_BUYS"     # if this file exists, no NEW buys in this mode. exits keep running. the dashboard sets it.
+DECISIONS = "logs/paper/checks.csv"        # every check and verdict, both modes: the scan and judges run once, logged as paper
 os.makedirs(f"logs/{MODE}", exist_ok=True)
 
 
-def buys_paused() -> bool:
-    """True when the Stop button has paused new entries. Checked in book.guard(); exits never check it."""
-    return os.path.exists(PAUSE_FLAG)
+def buys_paused(mode: str | None = None) -> bool:
+    """True when the dashboard has paused new entries for this mode. Checked in book.guard(); exits never check it."""
+    return os.path.exists(f"logs/{mode or MODE}/PAUSE_BUYS")

@@ -6,7 +6,7 @@ from rugcheck import report, fact_kill
 from market import pool, market_kill
 from grok import ask
 from prompts import JUDGE_PROMPT
-import book
+from fills import enter_both
 
 
 def log(row: dict):
@@ -20,9 +20,6 @@ def log(row: dict):
 
 
 def check(mint: str) -> dict:
-    if (g := book.guard(mint)):                                  # limits, free
-        return {"stage": "limits", "verdict": "SKIP", "reason": g}
-
     try:
         token = report(mint)                                     # rug filter, free
     except Exception as e:
@@ -60,13 +57,5 @@ if __name__ == "__main__":
     v = check(mint)
     log({"time": time.strftime("%Y-%m-%d %H:%M"), "mint": mint, **v})
     if v["verdict"] == "BUY":
-        if PAPER:
-            book.open_position(mint, v["symbol"], v["price"], v["liq_usd"])
-            v["action"] = f"PAPER BUY ${TICKET_USD} at {v['price']}"
-        else:
-            import trade
-            try:
-                v["action"] = trade.enter(mint, v["symbol"], {"price": v["price"], "liq_usd": v["liq_usd"]})
-            except Exception as e:
-                v["action"] = f"ERROR live buy failed, nothing recorded: {e}"
+        v["action"] = " | ".join(enter_both(mint, v["symbol"], v["price"], v["liq_usd"]))
     print(json.dumps(v, indent=2))

@@ -13,7 +13,7 @@ from solders.instruction import Instruction, AccountMeta
 from solders.message import Message
 from solders.hash import Hash
 from solders.pubkey import Pubkey
-from config import (PAPER, RPC_URLS, WALLET_FILE, SLIPPAGE_BPS, MIN_SOL_RESERVE, TICKET_USD, LOG, scrub)
+from config import (PAPER, RPC_URLS, WALLET_FILE, SLIPPAGE_BPS, MIN_SOL_RESERVE, TICKET_USD, DECISIONS, scrub)
 import book
 
 JUP = "https://lite-api.jup.ag/swap/v1"
@@ -61,9 +61,9 @@ def decimals(mint: str) -> int:
     return rpc("getTokenSupply", [mint])["value"]["decimals"]
 
 
-def quote(inp: str, out: str, amount_raw: int) -> dict:
+def quote(inp: str, out: str, amount_raw: int, slippage_bps: int | None = None) -> dict:
     r = requests.get(f"{JUP}/quote", timeout=20, params={
-        "inputMint": inp, "outputMint": out, "amount": amount_raw, "slippageBps": SLIPPAGE_BPS})
+        "inputMint": inp, "outputMint": out, "amount": amount_raw, "slippageBps": slippage_bps or SLIPPAGE_BPS})
     r.raise_for_status()
     q = r.json()
     if "outAmount" not in q:
@@ -104,10 +104,14 @@ def close_empty(send: bool = True) -> dict:
     return {**out, "sent": True, "sig": sig}
 
 
-def _swap(q: dict, kp: Keypair, send: bool) -> dict:
+# the Close button pays to land first: Jupiter's "veryHigh" priority fee, never more than 0.001 SOL
+PRIORITY_FEE = {"priorityLevelWithMaxLamports": {"priorityLevel": "veryHigh", "maxLamports": 1_000_000}}
+
+
+def _swap(q: dict, kp: Keypair, send: bool, priority: bool = False) -> dict:
     r = requests.post(f"{JUP}/swap", timeout=30, json={
         "quoteResponse": q, "userPublicKey": str(kp.pubkey()),
-        "dynamicComputeUnitLimit": True, "prioritizationFeeLamports": "auto"})
+        "dynamicComputeUnitLimit": True, "prioritizationFeeLamports": PRIORITY_FEE if priority else "auto"})
     r.raise_for_status()
     unsigned = VersionedTransaction.from_bytes(base64.b64decode(r.json()["swapTransaction"]))
     tx = base64.b64encode(bytes(VersionedTransaction(unsigned.message, [kp]))).decode()
@@ -137,11 +141,11 @@ def _changed(read, before, tries=15):
 
 
 def _approved(mint: str) -> bool:
-    if not os.path.exists(LOG):
+    if not os.path.exists(DECISIONS):
         return False
     cutoff = time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() - APPROVAL_WINDOW_MIN * 60))
     return any(r["mint"] == mint and r["verdict"] == "BUY" and r["time"] >= cutoff
-               for r in csv.DictReader(open(LOG)))
+               for r in csv.DictReader(open(DECISIONS)))
 
 
 def buy(mint: str, usd: float = TICKET_USD, dry: bool = False) -> dict:
@@ -168,7 +172,8 @@ def buy(mint: str, usd: float = TICKET_USD, dry: bool = False) -> dict:
     return {**res, "qty": qty, "price": usd / qty, "usd": usd, "sol_balance": bal}
 
 
-def sell(mint: str, qty: float, everything: bool = False, dry: bool = False) -> dict:
+def sell(mint: str, qty: float, everything: bool = False, dry: bool = False,
+         slippage_bps: int | None = None, priority: bool = False) -> dict:
     """Sell `qty` tokens (or the whole balance) back to SOL. Returns usd received and price per token."""
     send = not (PAPER or dry)
     kp = _wallet()
@@ -176,9 +181,9 @@ def sell(mint: str, qty: float, everything: bool = False, dry: bool = False) -> 
     raw = have if everything else min(have, int(qty * 10 ** decimals(mint)))
     if raw <= 0:
         raise RuntimeError("nothing to sell in the wallet")
-    q = quote(mint, SOL, raw)
+    q = quote(mint, SOL, raw, slippage_bps)
     before = sol_balance(kp.pubkey())
-    res = _swap(q, kp, send)
+    res = _swap(q, kp, send, priority)
     sol_out = (_changed(lambda: sol_balance(kp.pubkey()), before) - before) if send else int(q["outAmount"]) / 1e9
     usd = sol_out * sol_usd()
     return {**res, "usd": usd, "price": usd / (raw / 10 ** decimals(mint))}
@@ -191,13 +196,19 @@ def enter(mint: str, symbol: str, m: dict) -> str:
     return f"LIVE BUY ${TICKET_USD} of {symbol} at {res['price']:.8g} (screen {m['price']:.8g}) https://solscan.io/tx/{res['sig']}"
 
 
-def leave(mint: str, frac_of_original: float, screen_price: float, reason: str) -> float:
-    """Live exit: real sell of a fraction of the original size (>= 1.0 = everything). Returns realized pnl."""
-    p = book.load()[mint]
-    everything = frac_of_original >= 1 or p["qty"] <= p["qty0"] * frac_of_original * 1.000001
-    res = sell(mint, min(p["qty"], p["qty0"] * frac_of_original), everything=everything)
-    pnl = book.sell(mint, 1.0 if everything else frac_of_original, res["price"], reason,
-                    screen_price=screen_price, tx=res["sig"])
+def leave(mint: str, frac_of_original: float, screen_price: float, reason: str,
+          slippage_bps: int | None = None, priority: bool = False, wait: float = 0) -> float:
+    """Live exit: real sell of a fraction of the original size (>= 1.0 = everything). Returns realized pnl.
+    one sell per token at a time: if another is running, wait up to `wait` s, then book.SellBusy (nothing sent)."""
+    with book.sell_lock(mint, wait):
+        p = book.load().get(mint)                    # re-read under the lock: the other seller may have closed it
+        if not p:
+            raise book.SellBusy(f"{mint[:8]} is already closed")
+        everything = frac_of_original >= 1 or p["qty"] <= p["qty0"] * frac_of_original * 1.000001
+        res = sell(mint, min(p["qty"], p["qty0"] * frac_of_original), everything=everything,
+                   slippage_bps=slippage_bps, priority=priority)
+        pnl = book.sell(mint, 1.0 if everything else frac_of_original, res["price"], reason,
+                        screen_price=screen_price, tx=res["sig"])
     if everything:                                   # get the token account's deposit back. never blocks the exit
         try:
             time.sleep(4)                            # let the sell settle so the account reads empty

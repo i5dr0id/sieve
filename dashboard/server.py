@@ -1,5 +1,6 @@
 # dashboard/server.py
-# read-only monitor for the desk. reads the log files, never writes them, never touches the key.
+# monitor for the desk. reads the log files and never touches the key. its only writes are the pause flag and
+# close requests. a close request also starts close_now.py, which does the selling; this server never reads the key.
 #   cd desk && .venv/bin/python dashboard/server.py        -> http://127.0.0.1:8787
 # binds to 127.0.0.1 only: nothing outside this Mac can reach it.
 import csv, io, json, os, secrets, subprocess, sys, tarfile, time
@@ -86,7 +87,7 @@ def runner() -> dict:
     # the ~15-char comm field (e.g. "/bin/ba"), so a substring check on it would miss.
     r = subprocess.run(["pgrep", "-f", "run.sh forever"], capture_output=True, text=True)
     running = r.returncode == 0 and bool(r.stdout.strip())
-    return {"running": running, "args": "forever" if running else None, "active_mode": config.MODE}
+    return {"running": running, "args": "forever" if running else None, "active_mode": "paper + live"}
 
 
 def state(mode: str, day: str) -> dict:
@@ -102,11 +103,15 @@ def state(mode: str, day: str) -> dict:
     kills = Counter(r["reason"] for r in today
                     if r["stage"] in ("facts", "pool", "limits") and "failed:" not in (r["reason"] or ""))
 
+    try:
+        closing = set(json.load(open(f"{base}/close_requests.json")))
+    except Exception:
+        closing = set()
     positions = []
     for mint, p in book.items():
         lp = cached(f"pool:{mint}", 30, lambda m=mint: live_pool(m))
         price = lp.get("price") or 0
-        positions.append({**p, "mint": mint, "now": price, "url": lp.get("url"), "liq_now": lp.get("liq_usd"),
+        positions.append({**p, "mint": mint, "closing": mint in closing, "now": price, "url": lp.get("url"), "liq_now": lp.get("liq_usd"),
                           "pct": (price / p["entry"] - 1) * 100 if price else None,
                           "upnl": p["qty"] * (price - p["entry"]) if price else None,
                           "hours": (time.time() - p["opened"]) / 3600})
@@ -117,7 +122,8 @@ def state(mode: str, day: str) -> dict:
 
     return {
         "mode": mode, "day": day, "now": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "paused": config.buys_paused(), "token": TOKEN,
+        "paused": config.buys_paused(mode), "paused_modes": {m: config.buys_paused(m) for m in ("paper", "live")},
+        "token": TOKEN,
         "runner": runner(),
         "wallet": cached("wallet", 60, wallet),
         "funnel": {
@@ -219,21 +225,69 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
+        data = self.body_json()
+        reply = lambda code, obj: self.send(code, json.dumps(obj).encode(), "application/json")
         if u.path == "/api/pause":
-            data = self.body_json()
+            # pause or resume NEW buys for one mode. pausing needs no token: it only ever makes the desk safer.
             on = bool(data.get("on"))
-            if not on and data.get("token") != TOKEN:          # resume needs the same-origin token; pause never does
-                return self.send(403, json.dumps({"error": "bad token"}).encode(), "application/json")
+            mode = data.get("mode") if data.get("mode") in ("paper", "live") else "live"
+            if not on and data.get("token") != TOKEN:
+                return reply(403, {"error": "bad token"})
             try:
-                if on:
-                    open(config.PAUSE_FLAG, "w").write(time.strftime("%Y-%m-%d %H:%M:%S"))
-                elif os.path.exists(config.PAUSE_FLAG):
-                    os.remove(config.PAUSE_FLAG)
-                return self.send(200, json.dumps({"paused": config.buys_paused()}).encode(), "application/json")
+                set_pause(mode, on)
+                return reply(200, {"mode": mode, "paused": config.buys_paused(mode)})
             except Exception as e:
-                return self.send(500, json.dumps({"error": config.scrub(e)}).encode(), "application/json")
+                return reply(500, {"error": config.scrub(e)})
+        if u.path == "/api/close":
+            mode, mint = data.get("mode"), str(data.get("mint") or "")
+            if data.get("token") != TOKEN:
+                return reply(403, {"error": "bad token"})
+            if mode not in ("paper", "live"):
+                return reply(400, {"error": "bad mode"})
+            try:
+                if mint not in open_book(mode):
+                    return reply(404, {"error": "not an open position"})
+                request_close(mode, mint)
+                return reply(200, {"ok": True})
+            except Exception as e:
+                return reply(500, {"error": config.scrub(e)})
+        if u.path == "/api/stop_live":
+            # the emergency stop: no new live buys, and every open live position is sold now (priority close).
+            if data.get("token") != TOKEN:
+                return reply(403, {"error": "bad token"})
+            try:
+                set_pause("live", True)
+                mints = list(open_book("live"))
+                for mint in mints:
+                    request_close("live", mint)
+                return reply(200, {"paused": True, "closing": len(mints)})
+            except Exception as e:
+                return reply(500, {"error": config.scrub(e)})
         self.send(404, b"not found", "text/plain")
 
+
+def open_book(mode: str) -> dict:
+    pos = f"logs/{mode}/positions.json"
+    return json.load(open(pos)) if os.path.exists(pos) else {}
+
+
+def set_pause(mode: str, on: bool):
+    flag = f"logs/{mode}/PAUSE_BUYS"
+    if on:
+        open(flag, "w").write(time.strftime("%Y-%m-%d %H:%M:%S"))
+    elif os.path.exists(flag):
+        os.remove(flag)
+
+
+def request_close(mode: str, mint: str):
+    """record the request (the engine's fallback, retried every minute), then sell right now in close_now.py,
+    a separate process: only it reads the key, never this server."""
+    req = f"logs/{mode}/close_requests.json"
+    cur = set(json.load(open(req))) if os.path.exists(req) else set()
+    json.dump(sorted(cur | {mint}), open(req + ".tmp", "w")); os.replace(req + ".tmp", req)
+    subprocess.Popen([sys.executable, "close_now.py", mode, mint], cwd=os.path.dirname(HERE),
+                     env={**os.environ, "SIEVE_MODE": mode}, stdin=subprocess.DEVNULL,
+                     stdout=open(f"logs/{mode}/close_now.log", "a"), stderr=subprocess.STDOUT, start_new_session=True)
 
 if __name__ == "__main__":
     print(f"Sieve dashboard on http://{HOST}:{PORT}  (ctrl+c to stop)")

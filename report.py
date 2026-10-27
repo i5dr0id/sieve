@@ -2,7 +2,7 @@
 # the evening report. everything in it comes from checks.csv and trades.csv, nothing from memory.
 import csv, os, sys, time
 from collections import Counter
-from config import LOG, PAPER
+from config import DECISIONS as LOG, PAPER
 import book
 
 day = sys.argv[1] if len(sys.argv) > 1 else time.strftime("%Y-%m-%d")   # python report.py 2026-10-18

@@ -8,9 +8,10 @@ from config import LOG
 FEEDS = ["token-boosts/top/v1", "token-boosts/latest/v1", "token-profiles/latest/v1"]
 PER_RUN = 8                              # cap per run, so one busy hour can't flood the desk
 
-# a token skipped because a source was down was never really checked, so it stays eligible
-seen = ({r["mint"] for r in csv.DictReader(open(LOG)) if "failed:" not in (r["reason"] or "")}
-        if os.path.exists(LOG) else set())
+# a token skipped because a source was down was never really checked, so it stays eligible.
+# logs/live/checks.csv is the history from before the dual-mode engine (2026-10-27): those count as seen too
+seen = {r["mint"] for f in (LOG, "logs/live/checks.csv") if os.path.exists(f)
+        for r in csv.DictReader(open(f)) if "failed:" not in (r["reason"] or "")}
 
 # rugcheck is the first network stage. if it's down, every token would die unchecked: skip the whole run
 try:
