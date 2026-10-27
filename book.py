@@ -1,6 +1,6 @@
 # book.py
 # positions, trades, limits. the desk's memory lives in two files you can open yourself.
-import csv, json, os, sys, time
+import contextlib, csv, fcntl, json, os, sys, time
 import config
 from config import (POSITIONS, TRADES, TICKET_USD, MAX_OPEN, MAX_ENTRIES_PER_DAY,
                     DAILY_LOSS_HALT_USD, COOLDOWN_HOURS, PAPER)
@@ -12,6 +12,53 @@ def load() -> dict:
 
 def save(book: dict):
     json.dump(book, open(POSITIONS, "w"), indent=2)
+
+
+class SellBusy(Exception):
+    """another sell of this token is already running (or it just closed). nothing was sent."""
+
+
+@contextlib.contextmanager
+def sell_lock(mint: str, wait: float = 0):
+    """one sell per token at a time. a second seller waits up to `wait` seconds, then raises SellBusy.
+    the OS drops the lock when the process ends, so a crash can never leave a token stuck."""
+    f = open(os.path.join(os.path.dirname(POSITIONS), f"sell_{mint[:12]}.lock"), "w")
+    end = time.time() + wait
+    while True:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            if time.time() >= end:
+                f.close()
+                raise SellBusy(f"a sell of {mint[:8]} is already running")
+            time.sleep(0.5)
+    try:
+        yield
+    finally:
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+
+
+CLOSE_REQ = os.path.join(os.path.dirname(POSITIONS), "close_requests.json")
+
+
+def close_requests() -> set:
+    """mints the user asked to close from the dashboard's Close button. watch.py sells them on its next check."""
+    try:
+        return set(json.load(open(CLOSE_REQ)))
+    except Exception:
+        return set()
+
+
+def clear_close_request(mint=None):
+    """drop one request, or (no mint) every request for a position that is no longer open."""
+    left = {m for m in close_requests() if mint is not None and m != mint and m in load()} if mint else \
+           {m for m in close_requests() if m in load()}
+    if left:
+        json.dump(sorted(left), open(CLOSE_REQ, "w"))
+    elif os.path.exists(CLOSE_REQ):
+        os.remove(CLOSE_REQ)
 
 
 def trades() -> list[dict]:
@@ -56,7 +103,8 @@ def guard(mint: str) -> str | None:
     day = time.strftime("%Y-%m-%d")
     book = load()
     if config.buys_paused():                                     return "paused"
-    if today_pnl() <= -DAILY_LOSS_HALT_USD:                      return "halted_daily_loss"
+    if config.HALT_CARRYOVER:                                    return "waiting_for_live"
+    if not PAPER and today_pnl() <= -DAILY_LOSS_HALT_USD:        return "halted_daily_loss"
     if mint in book:                                             return "already_open"
     if len(book) >= MAX_OPEN:                                    return "max_open"
     opens = [t for t in trades() if t["action"] == "open" and t["time"].startswith(day)]

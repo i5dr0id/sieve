@@ -317,7 +317,7 @@ async function load() {
   // positions
   $("#pos-note").textContent = mode === "paper" ? "pretend fills" : "real money";
   table($("#positions"),
-    [["Token"], ["Entry", "num"], ["Now", "num"], ["Change", "num"], ["Unrealized", "num"], ["Held", "num"], ["Exits"], ["Pool vs entry", "num"]],
+    [["Token"], ["Entry", "num"], ["Now", "num"], ["Change", "num"], ["Unrealized", "num"], ["Held", "num"], ["Exits"], ["Pool vs entry", "num"], [""]],
     s.positions.map(p => {
       const c = p.pct;
       // marker on a -35%..+200% scale: stop on the left, ladder on the right
@@ -329,7 +329,9 @@ async function load() {
         <td class="num ${cls(c)}">${pct(c)}</td><td class="num ${cls(p.upnl)}">${sgn(p.upnl)}</td>
         <td class="num">${p.hours.toFixed(1)}h</td>
         <td><div class="exitbar" title="stop −35% · take profit +100% / +200%">−35%<div class="t"><div class="m" style="left:${at}%"></div></div>+200% · ${p.steps} taken</div></td>
-        <td class="num ${cls(liq)}">${pct(liq)}</td></tr>`;
+        <td class="num ${cls(liq)}">${pct(liq)}</td>
+        <td>${p.closing ? '<button class="act" disabled>Closing…</button>'
+              : `<button class="act closebtn" data-mint="${esc(p.mint)}" data-sym="${esc(p.symbol)}">Close</button>`}</td></tr>`;
     }), "No open positions.");
 
   // charts
@@ -411,6 +413,20 @@ $("#btn-pause").onclick = async () => {
   } catch (e) { alert("Server not reachable."); }
   b.disabled = false;
 };
+
+$("#positions").addEventListener("click", async ev => {
+  const b = ev.target.closest(".closebtn"); if (!b) return;
+  const live = mode === "live";
+  if (!confirm(`Sell all of ${b.dataset.sym} now at market?` + (live ? " This is REAL money." : " (paper: pretend sale)"))) return;
+  b.disabled = true; b.textContent = "Closing…";
+  try {
+    const r = await fetch("/api/close", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, mint: b.dataset.mint, token }) });
+    const j = await r.json();
+    if (j.error) { alert("Failed: " + j.error); b.disabled = false; b.textContent = "Close"; }
+    else { $("#pos-note").textContent = "selling now (priority close). if it fails, the desk keeps retrying every minute"; }
+  } catch (e) { alert("Server not reachable."); b.disabled = false; b.textContent = "Close"; }
+});
 
 $("#btn-export").onclick = () => {
   const day = $("#day").value || today;

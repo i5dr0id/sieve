@@ -1,5 +1,6 @@
 # dashboard/server.py
-# read-only monitor for the desk. reads the log files, never writes them, never touches the key.
+# monitor for the desk. reads the log files and never touches the key. its only writes are the pause flag and
+# close requests. a close request also starts close_now.py, which does the selling; this server never reads the key.
 #   cd desk && .venv/bin/python dashboard/server.py        -> http://127.0.0.1:8787
 # binds to 127.0.0.1 only: nothing outside this Mac can reach it.
 import csv, io, json, os, secrets, subprocess, sys, tarfile, time
@@ -102,11 +103,15 @@ def state(mode: str, day: str) -> dict:
     kills = Counter(r["reason"] for r in today
                     if r["stage"] in ("facts", "pool", "limits") and "failed:" not in (r["reason"] or ""))
 
+    try:
+        closing = set(json.load(open(f"{base}/close_requests.json")))
+    except Exception:
+        closing = set()
     positions = []
     for mint, p in book.items():
         lp = cached(f"pool:{mint}", 30, lambda m=mint: live_pool(m))
         price = lp.get("price") or 0
-        positions.append({**p, "mint": mint, "now": price, "url": lp.get("url"), "liq_now": lp.get("liq_usd"),
+        positions.append({**p, "mint": mint, "closing": mint in closing, "now": price, "url": lp.get("url"), "liq_now": lp.get("liq_usd"),
                           "pct": (price / p["entry"] - 1) * 100 if price else None,
                           "upnl": p["qty"] * (price - p["entry"]) if price else None,
                           "hours": (time.time() - p["opened"]) / 3600})
@@ -230,6 +235,29 @@ class H(BaseHTTPRequestHandler):
                 elif os.path.exists(config.PAUSE_FLAG):
                     os.remove(config.PAUSE_FLAG)
                 return self.send(200, json.dumps({"paused": config.buys_paused()}).encode(), "application/json")
+            except Exception as e:
+                return self.send(500, json.dumps({"error": config.scrub(e)}).encode(), "application/json")
+        if u.path == "/api/close":
+            # records the request, then starts close_now.py, which sells within seconds.
+            data = self.body_json()
+            mode, mint = data.get("mode"), str(data.get("mint") or "")
+            if data.get("token") != TOKEN:
+                return self.send(403, json.dumps({"error": "bad token"}).encode(), "application/json")
+            if mode not in ("paper", "live"):
+                return self.send(400, json.dumps({"error": "bad mode"}).encode(), "application/json")
+            try:
+                pos = f"logs/{mode}/positions.json"
+                if mint not in (json.load(open(pos)) if os.path.exists(pos) else {}):
+                    return self.send(404, json.dumps({"error": "not an open position"}).encode(), "application/json")
+                req = f"logs/{mode}/close_requests.json"
+                cur = set(json.load(open(req))) if os.path.exists(req) else set()
+                json.dump(sorted(cur | {mint}), open(req + ".tmp", "w")); os.replace(req + ".tmp", req)
+                # priority: sell right now in its own process (only it reads the key). if that fails,
+                # the request above stays and the engine keeps retrying every minute.
+                subprocess.Popen([sys.executable, "close_now.py", mode, mint], cwd=os.path.dirname(HERE),
+                                 stdin=subprocess.DEVNULL, stdout=open(f"logs/{mode}/close_now.log", "a"),
+                                 stderr=subprocess.STDOUT, start_new_session=True)
+                return self.send(200, json.dumps({"ok": True}).encode(), "application/json")
             except Exception as e:
                 return self.send(500, json.dumps({"error": config.scrub(e)}).encode(), "application/json")
         self.send(404, b"not found", "text/plain")

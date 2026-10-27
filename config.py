@@ -27,9 +27,9 @@ MODEL = "grok-4.7"          # check console.x.ai -> Models if the API rejects it
 PAPER = False               # LIVE since 2026-10-20. paper settings saved in logs/config_paper_backup.py
 
 TICKET_USD = 5              # flat. never sized off the last win
-MAX_OPEN = 3                # 3 x $5 = $15 in the market, max
+MAX_OPEN = 2                # 2 x $5 = $10 in the market, max (was 3 until 2026-10-27)
 MAX_ENTRIES_PER_DAY = 4
-DAILY_LOSS_HALT_USD = 10    # realized loss today hits this -> no new entries until tomorrow
+DAILY_LOSS_HALT_USD = 7     # live realized loss today hits this -> live stops, the rest of the day runs as paper (data keeps flowing)
 COOLDOWN_HOURS = 24         # no re-entry into a token you just left
 
 FACTS = {                   # the rug filter. code only, no model
@@ -87,6 +87,19 @@ WALLET_ADDRESS = ENV.get("WALLET_ADDRESS") or "YOUR_WALLET_PUBLIC_ADDRESS_HERE" 
 WALLET_FILE = "~/.sieve/hotwallet.json"   # the bot's key. never printed, never pasted
 SLIPPAGE_BPS = 300          # 3% max slippage per swap; above this the swap fails instead of filling badly
 MIN_SOL_RESERVE = 0.02      # always leave this much SOL for fees, never spend it
+
+# live hit its daily loss halt (halt_check.py writes the flag): finish that day in paper so data keeps flowing.
+# live comes back the next day, once any paper position left open is closed. the key and live files are never touched.
+HALT_FLAG = "logs/HALTED_TO_PAPER"
+LIVE_REQUESTED = not PAPER
+HALT_CARRYOVER = False
+if LIVE_REQUESTED and os.path.exists(HALT_FLAG):
+    import time as _t
+    _paper_open = os.path.exists("logs/paper/positions.json") and open("logs/paper/positions.json").read().strip() not in ("", "{}")
+    if open(HALT_FLAG).read().strip() == _t.strftime("%Y-%m-%d"):
+        PAPER = True
+    elif _paper_open:                  # a new day, but pretend positions are still open: keep managing them as paper
+        PAPER = True; HALT_CARRYOVER = True
 
 # paper and live never share a file, so a pretend position can never be treated as a real one
 MODE = "paper" if PAPER else "live"

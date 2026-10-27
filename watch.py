@@ -10,6 +10,7 @@ if not PAPER:
 
 def watch() -> list[str]:
     events = []
+    manual = book.close_requests()
     for mint, p in list(book.load().items()):
         try:
             m = pool(mint)
@@ -34,16 +35,22 @@ def watch() -> list[str]:
         pct = (price / s["entry"] - 1) * 100
         hours = (time.time() - s["opened"]) / 3600
 
-        def out(frac, why) -> bool:
+        def out(frac, why, **live) -> bool:
             size = "the rest" if frac >= 1 else f"{int(frac * 100)}%"
             try:
-                pnl = book.sell(mint, frac, price, why) if PAPER else trade.leave(mint, frac, price, why)
+                pnl = book.sell(mint, frac, price, why) if PAPER else trade.leave(mint, frac, price, why, **live)
+            except book.SellBusy:                        # another sell of this token is running. next run looks again
+                return False
             except Exception as e:                       # position stays in the book, next run retries
                 events.append(f"ERROR {s['symbol']}: live sell {size} ({why}) failed: {e}")
                 return False
             events.append(f"{s['symbol']}: {'sold' if PAPER else 'LIVE sold'} {size} at {pct:+.0f}% ({why}), pnl ${pnl:+.2f}")
             return True
 
+        if mint in manual:                               # the dashboard's Close button. a failed sell stays requested and retries
+            if out(1.0, "manual_close", slippage_bps=1000, priority=True):
+                book.clear_close_request(mint)
+            continue
         if m["liq_usd"] < s["liq0"] * (1 - EXIT["liq_drop_pct"] / 100):
             out(1.0, "liquidity_drop"); continue
         if pct <= EXIT["stop_pct"]:
@@ -63,6 +70,7 @@ def watch() -> list[str]:
             out(1.0, "late_trail"); continue
         if hours >= EXIT["time_stop_hours"] and pct < EXIT["time_stop_min_pct"]:
             out(1.0, "time_stop")
+    book.clear_close_request()                            # forget requests for positions that are already gone
     return events
 
 

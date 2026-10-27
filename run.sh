@@ -22,7 +22,8 @@ else
   end_ts=$(to_epoch "$(date +%Y-%m-%d) $END")
   [ "$end_ts" -le "$(date +%s)" ] && end_ts=$((end_ts + 86400))
 fi
-echo "$(date +%H:%M) START $($PY -c "import config; print(config.MODE)") session until $END"
+mode=$($PY -c "import config; print(config.MODE)")
+echo "$(date +%H:%M) START $mode session until $END"
 day=$(date +%Y-%m-%d)
 while [ "$(date +%s)" -lt "$end_ts" ]; do
   $PY watch.py 2>&1 | sed "s/^/$(date +%H:%M) WATCH /"
@@ -30,6 +31,9 @@ while [ "$(date +%s)" -lt "$end_ts" ]; do
   $PY autojudge.py 2>&1 | sed "s/^/$(date +%H:%M) /"      # judges REVIEWs nobody judged in time
   [ -n "$HAVE_CLAUDE" ] && $PY shadowjudge.py 2>&1 | sed "s/^/$(date +%H:%M) /"   # AI verdicts, logged only, never traded (skipped on the phone)
   $PY followup.py 2>&1 | sed "s/^/$(date +%H:%M) /"       # +6h / +24h prices for every judged token
+  $PY halt_check.py 2>&1 | sed "s/^/$(date +%H:%M) /"    # live lost its daily limit and nothing live is open: rest of the day runs as paper
+  cur=$($PY -c "import config; print(config.MODE)")
+  if [ "$cur" != "$mode" ]; then echo "$(date +%H:%M) MODE $mode -> $cur, restarting the runner"; exec "$0" "$1"; fi
   if [ "$(date +%Y-%m-%d)" != "$day" ]; then              # new day: report the one that just ended
     $PY report.py "$day" | sed "s/^/REPORT /"
     day=$(date +%Y-%m-%d)
