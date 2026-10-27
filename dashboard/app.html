@@ -216,7 +216,7 @@ html.android .btn { border-radius: 99px; } html.android .btn:not(.red):not(.ghos
 <nav class="tabbar" id="tabbar">
   <button class="tab on" data-tab="live"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg></span>Live<span class="dot" id="dot-live"></span></button>
   <button class="tab" data-tab="paper"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></span>Paper<span class="dot" id="dot-paper"></span></button>
-  <button class="tab" data-tab="feed"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg></span>Feed</button>
+  <button class="tab" data-tab="feed"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg></span>Feed<span class="dot" id="dot-feed">!</span></button>
   <button class="tab" data-tab="more"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>Settings</button>
 </nav>
 
@@ -290,10 +290,18 @@ function engineChip(mode) {
   if (S.fail && !S.live) return `<span class="chip down"><i></i>Offline</span>`;
   const r = S.live.runner;
   if (!r.running) return `<span class="chip down"><i></i>Engine down</span>`;
+  if (S.live.scan && S.live.scan.stale) return `<span class="chip paused"><i></i>Scan stalled</span>`;
   return S.live.paused_modes[mode] ? `<span class="chip paused"><i></i>Paused</span>` : `<span class="chip on"><i></i>${mode === "live" ? "Trading" : "Collecting"}</span>`;
 }
 function offline() {
   return `<div class="banner bad ${S.fail ? "show" : ""}">Can't reach the desk${S.at ? " · showing data from " + new Date(S.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}. Are you on the home Wi-Fi?</div>`;
+}
+// the engine can run while its scan finds nothing: say so instead of showing green
+function scanAgo(sc) { return sc.age_min == null ? "never" : sc.age_min < 60 ? `${sc.age_min} min ago` : sc.age_min >= 1440 ? `${Math.floor(sc.age_min / 1440)}d ago` : `${Math.floor(sc.age_min / 60)}h ${sc.age_min % 60}m ago`; }
+function stalled() {
+  const sc = S.live && S.live.scan;
+  if (!sc || !sc.stale || !S.live.runner.running) return "";
+  return `<div class="banner warn show">No tokens checked since ${sc.last ? esc(hm(sc.last)) : "the engine started"} (${scanAgo(sc)}). The engine is running but the scan isn't, so nothing new can be bought. Open trades still get their exits.</div>`;
 }
 function posRows(st, mode) {
   if (!st.positions.length) return `<div class="list"><div class="empty">No open positions</div></div>`;
@@ -329,7 +337,7 @@ const winrate = (t) => t.closed ? Math.round(t.wins / t.closed * 100) + "%" : "�
 // ---------- tabs
 function renderLive() {
   const s = S.live, w = s.wallet || {}, sw = s.sweep || {}, paused = s.paused_modes.live, t = s.totals || {};
-  return hdr("Live", engineChip("live")) + offline() +
+  return hdr("Live", engineChip("live")) + offline() + stalled() +
     `<div class="banner warn ${paused ? "show" : ""}">Live buys are paused. Open trades keep their exits, and paper keeps collecting data.</div>
     <div class="hero">
       <div class="k">Wallet</div>
@@ -371,9 +379,15 @@ function renderPaper() {
 function renderFeed() {
   const s = S.paper, f = s.funnel, fu = s.followups;
   const sc = (x) => x && x.n ? `<span class="${cls(x.avg)}">${pct(x.avg)}</span>` : "–";
-  const dec = s.decisions.slice(0, 15);
-  return hdr("Feed") + offline() +
-    `<div class="sec"><span>Today</span><span>one scan · one judge</span></div>
+  const dec = s.decisions.slice(0, 15), scn = s.scan || {}, scans = (s.scans || []).slice(0, 20);
+  const verdict = (r) => r.verdict === "BUY" ? ["buy", "BUY"] : r.verdict === "REVIEW" ? ["buy", "PASS"] : ["skip", "KILL"];
+  return hdr("Feed", engineChip("paper")) + offline() + stalled() +
+    `<div class="sec"><span>Scanner</span><span>every 10 min</span></div>
+    <div class="list">
+      <div class="row"><div class="main"><div class="title" style="font-weight:500">Last scan</div></div><div class="val num ${scn.stale ? "down" : ""}">${scn.last ? esc(hm(scn.last)) + " · " + scanAgo(scn) : "never"}</div></div>
+      <div class="row"><div class="main"><div class="title" style="font-weight:500">Checked in the last hour</div></div><div class="val num">${scn.last_hour ?? 0}</div></div>
+    </div>
+    <div class="sec"><span>Today</span><span>one scan · one judge</span></div>
     <div class="funnel num">
       <div><div class="v">${f.checked}</div><div class="k">checked</div></div>
       <div><div class="v">${f.killed_facts + f.killed_pool}</div><div class="k">killed</div></div>
@@ -391,6 +405,12 @@ function renderFeed() {
         <div class="main"><div class="title">${sym(r.symbol)}</div><div class="meta">${esc(String(r.reason || "").replace(/^\[code\] /, ""))}</div></div>
         <div class="end"><span class="badge ${r.verdict === "BUY" ? "buy" : "skip"}">${esc(r.verdict)}</span><div class="b">${esc(hm(r.time))}</div></div></button>`).join("")
       : `<div class="empty">No decisions yet</div>`}</div>
+    <div class="sec"><span>Latest scans</span><span>every token checked</span></div>
+    <div class="list">${scans.length ? scans.map((r) => { const [c, v] = verdict(r); return `<a class="row" href="https://dexscreener.com/solana/${esc(r.mint)}" target="_blank" rel="noopener">
+        ${avatar(r.symbol)}
+        <div class="main"><div class="title">${sym(r.symbol)}</div><div class="meta">${esc(r.stage)} · ${esc(String(r.reason || "").replace(/^danger:/, "").replace(/_/g, " "))}</div></div>
+        <div class="end"><span class="badge ${c}">${v}</span><div class="b">${esc(hm(r.time))}</div></div></a>`; }).join("")
+      : `<div class="empty">No scans yet</div>`}</div>
     <div class="sec"><span>Most common kills today</span></div>
     <div class="list">${s.kills.length ? s.kills.slice(0, 6).map(([k, n]) => `<div class="row"><div class="main"><div class="title" style="font-weight:500">${esc(String(k).replace(/^danger:/, "").replace(/_/g, " "))}</div></div><div class="val num">${n}</div></div>`).join("")
       : `<div class="empty">Nothing killed yet today</div>`}</div>`;
@@ -413,6 +433,7 @@ function renderMore() {
     <div class="sec"><span>Engine</span></div>
     <div class="list">
       <div class="row"><div class="main"><div class="title" style="font-weight:500">Status</div></div><div class="val">${s.runner.running ? "Running" : "Not running"}</div></div>
+      <div class="row"><div class="main"><div class="title" style="font-weight:500">Last scan</div></div><div class="val num ${s.scan && s.scan.stale ? "down" : ""}">${s.scan && s.scan.last ? esc(hm(s.scan.last)) + " · " + scanAgo(s.scan) : "never"}</div></div>
       <button class="row" data-act="log" data-mode="live"><div class="main"><div class="title" style="font-weight:500">Live log</div></div><span class="chev">${I.chev}</span></button>
       <button class="row" data-act="log" data-mode="paper"><div class="main"><div class="title" style="font-weight:500">Engine log</div><div class="meta">Every scan, verdict and fill</div></div><span class="chev">${I.chev}</span></button>
     </div>
@@ -436,6 +457,7 @@ function render() {
   $("#p-more").innerHTML = renderMore();
   const n = (st) => st.positions.length;
   for (const m of ["live", "paper"]) { const d = $("#dot-" + m); d.textContent = n(S[m]); d.classList.toggle("show", n(S[m]) > 0); }
+  $("#dot-feed").classList.toggle("show", !!(S.live.scan && S.live.scan.stale && S.live.runner.running));
   if (sheetRefresh) sheetRefresh();
 }
 

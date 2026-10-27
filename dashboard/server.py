@@ -104,6 +104,20 @@ def runner() -> dict:
     return {"running": running, "args": "forever" if running else None, "active_mode": "paper + live"}
 
 
+SCAN_STALE_MIN = 30     # the scan runs every 10 min and the feeds always have new tokens: 30 quiet minutes means it's broken
+
+
+def scan_health(checks: list) -> dict:
+    """when the scan last checked a token. the engine can be running while its scan does nothing (2026-10-27: an empty scan.py)."""
+    scans = [r for r in checks if r["stage"] not in JUDGES]
+    if not scans:
+        return {"last": None, "age_min": None, "last_hour": 0, "stale": True}
+    stamp = lambda r: time.mktime(time.strptime(r["time"], "%Y-%m-%d %H:%M"))
+    age = (time.time() - stamp(scans[-1])) / 60
+    return {"last": scans[-1]["time"], "age_min": round(age), "stale": age > SCAN_STALE_MIN,
+            "last_hour": len({r["mint"] for r in scans if time.time() - stamp(r) < 3600})}
+
+
 def totals(trades: list) -> dict:
     """all-time realized P&L, and wins per position: an open starts one, its sales add up, a close ends it."""
     cur, done = {}, []
@@ -121,7 +135,8 @@ def state(mode: str, day: str) -> dict:
     base = f"logs/{mode}"
     # the scan and the judges log once, to the shared decisions log (logs/paper, since 2026-10-27).
     # logs/live/checks.csv is the live history from before that, so the live view reads both.
-    checks = sorted(rows(config.DECISIONS) + (rows(f"{base}/checks.csv") if mode == "live" else []), key=lambda r: r["time"])
+    shared = rows(config.DECISIONS)
+    checks = sorted(shared + (rows(f"{base}/checks.csv") if mode == "live" else []), key=lambda r: r["time"])
     trades = rows(f"{base}/trades.csv")
     book = json.load(open(f"{base}/positions.json")) if os.path.exists(f"{base}/positions.json") else {}
 
@@ -154,6 +169,8 @@ def state(mode: str, day: str) -> dict:
         "paused": config.buys_paused(mode), "paused_modes": {m: config.buys_paused(m) for m in ("paper", "live")},
         "token": TOKEN,
         "runner": runner(),
+        "scan": scan_health(shared),
+        "scans": [r for r in shared if r["stage"] not in JUDGES][-30:][::-1],
         "wallet": cached("wallet", 60, wallet),
         "sweep": sweep_preview(cached("wallet", 60, wallet)),
         "funnel": {
