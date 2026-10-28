@@ -73,7 +73,7 @@ CODE_JUDGE = {                  # each rule is a SKIP. a token that breaks none 
 SHADOW_JUDGE = {"model": "haiku", "timeout_s": 120}
 
 EXIT = {
-    "stop_pct": -35,                        # hard stop from entry
+    "stop_pct": -20,                        # hard stop from entry (was -35 until 2026-10-28: backtest scored -15..-35 the same, -20 best)
     "ladder": [(100, 0.50), (200, 0.25)],   # +100% sells half, +200% sells a quarter (of the original). after a
                                             # manual sale, each step sells the same share of what is left instead
     "trail_pct": 30,                        # the rest: out when price falls 30% from its peak

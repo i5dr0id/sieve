@@ -306,7 +306,7 @@ function stalled() {
 function posRows(st, mode) {
   if (!st.positions.length) return `<div class="list"><div class="empty">No open positions</div></div>`;
   return `<div class="list">` + st.positions.map((p, i) => {
-    const lo = -35, hi = 200, c = p.pct ?? 0, at = Math.max(0, Math.min(100, (c - lo) / (hi - lo) * 100)), z = (0 - lo) / (hi - lo) * 100;
+    const lo = -20, hi = 200, c = p.pct ?? 0, at = Math.max(0, Math.min(100, (c - lo) / (hi - lo) * 100)), z = (0 - lo) / (hi - lo) * 100;
     const fill = c >= 0 ? `left:${z}%;width:${at - z}%;background:var(--green)` : `left:${at}%;width:${z - at}%;background:var(--red)`;
     return `<button class="row" data-act="pos" data-mode="${mode}" data-i="${i}">
       ${avatar(p.symbol)}
@@ -501,7 +501,7 @@ const ACT = {
         <p class="lead">${mode === "live" ? "Real money" : "Paper"} · held ${held(q.hours)}${q.closing ? ' · <span class="closing">closing…</span>' : ""}</p>
         <div class="list">${row("Unrealized", usd(q.upnl, true), cls(q.upnl))}${row("Entry", px(q.entry))}${row("Now", px(q.now))}
           ${row("Peak", pct(peak), cls(peak))}${row("Pool vs entry", pct(liq), cls(liq))}${row("Ladder sales", q.steps + " of 2")}</div>
-        <div class="list">${row("Stop", "−35%")}${row("Take profit", "+100% (½), +200% (¼)")}${row("Trailing stop", "30% from peak")}</div>
+        <div class="list">${row("Stop", "−20%")}${row("Take profit", "+100% (½), +200% (¼)")}${row("Trailing stop", "30% from peak")}</div>
         ${q.url ? `<a class="btn ghost" href="${esc(q.url)}" target="_blank" rel="noopener">View chart</a>` : ""}
         <button class="btn ghost" data-act="close" data-part="0.5" data-mode="${mode}" data-mint="${esc(q.mint)}" ${q.closing ? "disabled" : ""}>Sell half</button>
         <button class="btn red" data-act="close" data-mode="${mode}" data-mint="${esc(q.mint)}" ${q.closing ? "disabled" : ""}>${q.closing ? "Closing…" : mode === "live" ? "Sell all now" : "Close position"}</button>

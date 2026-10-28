@@ -322,15 +322,15 @@ async function load() {
     [["Token"], ["Entry", "num"], ["Now", "num"], ["Change", "num"], ["Unrealized", "num"], ["Held", "num"], ["Exits"], ["Pool vs entry", "num"], [""]],
     s.positions.map(p => {
       const c = p.pct;
-      // marker on a -35%..+200% scale: stop on the left, ladder on the right
-      const lo = -35, hi = 200, at = c == null ? 0 : Math.max(0, Math.min(100, (c - lo) / (hi - lo) * 100));
+      // marker on a -20%..+200% scale: stop on the left, ladder on the right
+      const lo = -20, hi = 200, at = c == null ? 0 : Math.max(0, Math.min(100, (c - lo) / (hi - lo) * 100));
       const liq = p.liq_now && p.liq0 ? (p.liq_now / p.liq0 - 1) * 100 : null;
       return `<tr>
         <td><a href="${p.url || dex(p.mint)}" target="_blank" rel="noopener"><b>${esc(p.symbol)}</b></a> <span class="muted">${short(p.mint)}</span></td>
         <td class="num">${px(p.entry)}</td><td class="num">${px(p.now)}</td>
         <td class="num ${cls(c)}">${pct(c)}</td><td class="num ${cls(p.upnl)}">${sgn(p.upnl)}</td>
         <td class="num">${p.hours.toFixed(1)}h</td>
-        <td><div class="exitbar" title="stop −35% · take profit +100% / +200%">−35%<div class="t"><div class="m" style="left:${at}%"></div></div>+200% · ${p.steps} taken</div></td>
+        <td><div class="exitbar" title="stop −20% · take profit +100% / +200%">−20%<div class="t"><div class="m" style="left:${at}%"></div></div>+200% · ${p.steps} taken</div></td>
         <td class="num ${cls(liq)}">${pct(liq)}</td>
         <td>${p.closing ? '<button class="act" disabled>Closing…</button>'
               : `<button class="act closebtn halfbtn" data-part="0.5" data-mint="${esc(p.mint)}" data-sym="${esc(p.symbol)}">Sell ½</button>

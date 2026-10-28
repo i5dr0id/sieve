@@ -19,7 +19,7 @@ PER_RUN = 3
 PROMPT = """You are the judge on a Solana memecoin desk. This token just passed 13 hard checks in code:
 mint/freeze authority, LP locked, holder concentration, dev wallet, insiders, pool depth, age.
 Do not re-check those numbers. Decide if ONE flat $5 ticket goes in. You never size, never pick exits.
-Exits are fixed: stop -35%, sell half at +100%, a quarter at +200%, 30% trailing stop, 6h time stop.
+Exits are fixed: stop -20%, sell half at +100%, a quarter at +200%, 30% trailing stop, 6h time stop.
 
 Judge what the numbers suggest together: is this organic demand or bot churn / a pump about to dump?
 Look at buys vs sells, volume vs pool, price change, age, holders, websites/socials, the warn-level risks.

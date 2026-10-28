@@ -73,7 +73,7 @@ Going live: once you trust it in paper, set `PAPER = False`. Hard caps stay in t
 
 - **Entry limits:** $5 flat ticket, max 3 open, max 4 entries/day, daily-loss halt at $10, 24h cooldown per token.
 - **Rug filter:** risk ≤40/100, LP ≥90% locked, top-10 ≤30%, dev ≤5%, 0 insiders, liquidity ≥$30k, age 30min–72h, ticket ≤1% of pool.
-- **Exits:** stop −35%, sell half at +100% & a quarter at +200%, 30% trailing stop, 6h time stop if not +20%, exit if pool liquidity drops 40%.
+- **Exits:** stop −20%, sell half at +100% & a quarter at +200%, 30% trailing stop, 6h time stop if not +20%, exit if pool liquidity drops 40%.
 
 To retune, you edit `config.py` and nothing else.
 
