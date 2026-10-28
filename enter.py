@@ -24,5 +24,7 @@ else:
     import trade
     try:
         say(trade.enter(mint, symbol, {"price": price, "liq_usd": liq}))
+    except trade.PriceRan as e:                    # nothing was sent: the price ran away after the judge looked
+        say(f"LIVE skip {symbol}: {e}")
     except Exception as e:
         say(f"ERROR live buy {symbol} failed, nothing recorded: {config.scrub(e)}")

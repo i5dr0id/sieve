@@ -94,6 +94,8 @@ RUGCHECK_KEY = ENV.get("RUGCHECK_API")             # sent as a header, so it nev
 WALLET_ADDRESS = ENV.get("WALLET_ADDRESS") or "YOUR_WALLET_PUBLIC_ADDRESS_HERE"   # your bot wallet's PUBLIC address (set in .env). dashboard reads balance from it.
 WALLET_FILE = "~/.sieve/hotwallet.json"   # the bot's key. never printed, never pasted
 SLIPPAGE_BPS = 300          # 3% max slippage per swap; above this the swap fails instead of filling badly
+MAX_ENTRY_PREMIUM_PCT = 5   # a live buy is skipped when its quote is this far above the screen price the judge saw
+                            # (slippage is measured against the quote, so it can't catch a run-up: STFD 2026-10-28 filled +12%)
 MIN_SOL_RESERVE = 0.02      # always leave this much SOL for fees, never spend it
 
 # profit sweeps (sweep.py): only ever to YOUR wallet, set as SWEEP_TO_ADDRESS in .env. the dashboard can't change it.

@@ -13,7 +13,8 @@ from solders.instruction import Instruction, AccountMeta
 from solders.message import Message
 from solders.hash import Hash
 from solders.pubkey import Pubkey
-from config import (PAPER, RPC_URLS, WALLET_FILE, SLIPPAGE_BPS, MIN_SOL_RESERVE, TICKET_USD, DECISIONS, scrub)
+from config import (PAPER, RPC_URLS, WALLET_FILE, SLIPPAGE_BPS, MAX_ENTRY_PREMIUM_PCT, MIN_SOL_RESERVE, TICKET_USD,
+                    DECISIONS, scrub)
 import book
 
 JUP = "https://lite-api.jup.ag/swap/v1"
@@ -148,8 +149,13 @@ def _approved(mint: str) -> bool:
                for r in csv.DictReader(open(DECISIONS)))
 
 
-def buy(mint: str, usd: float = TICKET_USD, dry: bool = False) -> dict:
-    """Spend `usd` of SOL on `mint`. Returns the real fill: tokens, price per token, tx."""
+class PriceRan(RuntimeError):
+    """the quote is too far above the price the judge decided on. a skip, not a failure."""
+
+
+def buy(mint: str, usd: float = TICKET_USD, dry: bool = False, screen_price: float | None = None) -> dict:
+    """Spend `usd` of SOL on `mint`. Returns the real fill: tokens, price per token, tx.
+    with `screen_price`, refuses (PriceRan) before sending when the quote is over MAX_ENTRY_PREMIUM_PCT above it."""
     send = not (PAPER or dry)
     if usd > min(TICKET_USD, HARD_MAX_USD):
         raise RuntimeError(f"refused: ${usd} is over the ticket/hard cap")
@@ -163,12 +169,17 @@ def buy(mint: str, usd: float = TICKET_USD, dry: bool = False) -> dict:
     if send and bal - lamports / 1e9 < MIN_SOL_RESERVE:
         raise RuntimeError(f"refused: {bal:.4f} SOL leaves less than the {MIN_SOL_RESERVE} SOL fee reserve")
     q = quote(SOL, mint, lamports)
+    dec = decimals(mint)
+    if screen_price:
+        premium = (usd / (int(q["outAmount"]) / 10 ** dec) / screen_price - 1) * 100
+        if premium > MAX_ENTRY_PREMIUM_PCT:
+            raise PriceRan(f"price ran {premium:+.1f}% above screen (max {MAX_ENTRY_PREMIUM_PCT}%)")
     before = token_raw(kp.pubkey(), mint) if send else 0
     res = _swap(q, kp, send)
     got = (_changed(lambda: token_raw(kp.pubkey(), mint), before) - before) if send else int(q["outAmount"])
     if got <= 0:
         raise RuntimeError(f"swap confirmed but no tokens arrived: {res}")
-    qty = got / 10 ** decimals(mint)
+    qty = got / 10 ** dec
     return {**res, "qty": qty, "price": usd / qty, "usd": usd, "sol_balance": bal}
 
 
@@ -191,7 +202,7 @@ def sell(mint: str, qty: float, everything: bool = False, dry: bool = False,
 
 def enter(mint: str, symbol: str, m: dict) -> str:
     """Live entry: real buy, then the book records the real fill (price, qty, tx) next to the screen price."""
-    res = buy(mint, TICKET_USD)
+    res = buy(mint, TICKET_USD, screen_price=m["price"])
     book.open_position(mint, symbol, res["price"], m["liq_usd"], TICKET_USD, screen_price=m["price"], tx=res["sig"])
     return f"LIVE BUY ${TICKET_USD} of {symbol} at {res['price']:.8g} (screen {m['price']:.8g}) https://solscan.io/tx/{res['sig']}"
 
