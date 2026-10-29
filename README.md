@@ -12,7 +12,7 @@ It started as a Python adaptation of a rug-filter approach shared by **boan** on
 ## How it works
 
 ```
-DexScreener feeds
+DexScreener feeds + GeckoTerminal trending pools
       │
       ▼
 13 hard checks  (FACTS in config.py — rugcheck + pool data, code only)
