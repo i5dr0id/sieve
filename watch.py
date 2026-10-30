@@ -1,19 +1,64 @@
 # watch.py
-# every open position, every 10 minutes. prints nothing when nothing changed.
-import time
-from config import EXIT, PAPER
+# every open position, every 20 seconds while anything is open. prints nothing when nothing changed.
+import csv, os, time
+from config import EXIT, MODE, PAPER, WALLET_WATCH
 from market import pool
-import book
+import book, wallets
 if not PAPER:
     import trade
 
 # live exits pay the priority fee: an unconfirmed sell is how a stop turns into a big loss (CHUNKEE, MFORGE, CHICO).
 # the urgent ones also accept 10% slippage, because getting out of a rug matters more than the last few % of price.
-URGENT = ("stop", "liquidity_pulled", "pool_gone", "manual_close")
+URGENT = ("stop", "liquidity_pulled", "pool_gone", "manual_close", "dev_sold", "holders_exit")
+TRIPWIRES = f"logs/{MODE}/tripwires.csv"    # every first wallet hit per position, shadow or not: the evidence for "on"
 
 
 def exit_fee(why: str) -> dict:
     return {"priority": True, **({"slippage_bps": 1000} if why in URGENT else {})}
+
+
+def wallet_rule(mint: str, s: dict, pct: float, events: list) -> str | None:
+    """the wallet tripwires. the first check after a buy takes the snapshot; later checks compare against it.
+    returns the rule to sell on, only in "on" mode. in "shadow" the first hit is logged once and the desk holds.
+    a failed read holds and retries next check; the 3rd failed snapshot says so once."""
+    if WALLET_WATCH["mode"] == "off" or s.get("wallets0") == "failed":
+        return None
+    if "wallets0" not in s:
+        try:
+            snap = wallets.snapshot(mint)
+        except Exception as e:
+            tries = s.get("wallets_tries", 0) + 1
+            with book.edit() as b:
+                if mint in b:
+                    b[mint].update(wallets_tries=tries, **({"wallets0": "failed"} if tries >= 3 else {}))
+            if tries >= 3:
+                events.append(f"{s['symbol']}: wallet watch off for this position, no snapshot ({e})")
+            return None
+        with book.edit() as b:
+            if mint in b:
+                b[mint]["wallets0"] = snap
+        return None                                      # the baseline is now. the next check compares against it
+    if s.get("wallet_hit"):                              # one hit per position is the evidence. no need to re-read
+        return None
+    try:
+        hit = wallets.tripwire(mint, s["wallets0"])
+    except Exception:
+        return None
+    if not hit:
+        return None
+    with book.edit() as b:
+        if mint in b:
+            b[mint]["wallet_hit"] = {"rule": hit, "pct": round(pct, 1), "time": time.time()}
+    new = not os.path.exists(TRIPWIRES)
+    with open(TRIPWIRES, "a", newline="") as f:
+        w = csv.writer(f)
+        if new:
+            w.writerow(["time", "mint", "symbol", "mode", "rule", "pct"])
+        w.writerow([time.strftime("%Y-%m-%d %H:%M:%S"), mint, s["symbol"], WALLET_WATCH["mode"], hit, round(pct, 1)])
+    if WALLET_WATCH["mode"] == "on":
+        return hit.split()[0]
+    events.append(f"SHADOW {s['symbol']}: wallets say exit at {pct:+.0f}%: {hit}. log-only, still holding")
+    return None
 
 
 def watch() -> list[str]:
@@ -63,6 +108,8 @@ def watch() -> list[str]:
             if out(1.0, "manual_close"):
                 book.clear_close_request(mint)
             continue
+        if (rule := wallet_rule(mint, s, pct, events)):  # wallets before price: the dev and the top 10 sell first
+            out(1.0, rule); continue
         if m["liq_usd"] < s["liq0"] * (1 - EXIT["liq_drop_pct"] / 100):
             out(1.0, "liquidity_drop"); continue
         if pct <= EXIT["stop_pct"]:

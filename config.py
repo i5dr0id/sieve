@@ -83,6 +83,17 @@ EXIT = {
     "liq_drop_pct": 40,                     # pool liquidity down 40% from entry -> out now
 }
 
+# wallet tripwires (wallets.py): a rug shows in the wallets before the chart. at the first exit check after a buy
+# the desk records the creator wallet and the top 10 holders; every check after that compares against it.
+WALLET_WATCH = {
+    "mode": "shadow",            # "shadow": log the first hit per position and keep holding (logs/<mode>/tripwires.csv).
+                                 # "on": sell everything on a hit. "off": don't read wallets at all
+    "dev_sell_pct": 20,          # creator wallet down 20% from the snapshot -> out
+    "dev_arm_pct": 0.5,          # the dev rule only counts if the creator held 0.5%+ of supply at the snapshot
+    "holders_peel_pct": 25,      # the snapshot's top 10 holders down 25% combined -> out
+    "holders_gone": 3,           # 3 of the snapshot's top 10 emptied -> out
+}
+
 # live trading (only used when PAPER = False). trade.py also has its own hard cap per buy.
 RPC_PUBLIC = "https://api.mainnet-beta.solana.com"
 # tried in this order; a dead or rate-limited endpoint falls through to the next. keys sit inside the URLs,

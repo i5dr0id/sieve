@@ -6,18 +6,33 @@ from config import FACTS, RUGCHECK_KEY
 RC = "https://api.rugcheck.xyz/v1/tokens"
 
 
-def report(mint: str) -> dict:
+def _get(mint: str) -> dict:
     r = requests.get(f"{RC}/{mint}/report", timeout=20, headers={"X-API-KEY": RUGCHECK_KEY} if RUGCHECK_KEY else {})
     r.raise_for_status()
-    d = r.json()
-    token = d.get("token") or {}
+    return r.json()
+
+
+def _holders(d: dict) -> list[dict]:
+    """top holders minus the AMM vaults and lockers: they sit in the list, but they are not whales."""
     known = d.get("knownAccounts") or {}
 
-    def is_pool(h):  # AMM vaults and lockers sit in top holders, they are not whales
+    def is_pool(h):
         tag = known.get(h.get("owner")) or known.get(h.get("address")) or {}
         return str(tag.get("type", "")).upper() in ("AMM", "LOCKER")
 
-    holders = [h for h in (d.get("topHolders") or []) if not is_pool(h)]
+    return [h for h in (d.get("topHolders") or []) if not is_pool(h)]
+
+
+def wallets(mint: str) -> dict:
+    """who to watch after a buy (wallets.py): the creator wallet, and the top 10 holders' token accounts."""
+    d = _get(mint)
+    return {"creator": d.get("creator"), "top10": [h["address"] for h in _holders(d)[:10] if h.get("address")]}
+
+
+def report(mint: str) -> dict:
+    d = _get(mint)
+    token = d.get("token") or {}
+    holders = _holders(d)
     markets = sorted(d.get("markets") or [],
                      key=lambda m: ((m.get("lp") or {}).get("baseUSD") or 0)
                                  + ((m.get("lp") or {}).get("quoteUSD") or 0),

@@ -2,7 +2,7 @@
 # session runner. ONE engine, BOTH modes, every cycle:
 #   the scan, the judges and the follow-ups run once and are logged as paper (the always-on data);
 #   every BUY verdict then becomes a position in each mode that allows it (enter.py: own limits, own pause);
-#   exits are checked for both books every 10 min, and every minute while anything is open.
+#   exits (and the wallet tripwires) are checked for both books every 10 min, and every 20 s while anything is open.
 #   ./run.sh 00:00      (stop time, local, HH:MM; defaults to midnight)
 #   ./run.sh forever    (never stops; prints yesterday's reports just after each midnight)
 # output: logs/paper/session.log gets everything. live buys, sells and reports are copied to logs/live/session.log.
@@ -58,9 +58,10 @@ while [ "$(date +%s)" -lt "$end_ts" ]; do
       ($PY weeklyreview.py 7 2>&1 | sed "s/^/$(date +%H:%M) /") &   # background so exits never wait on it
     fi
   fi
-  for i in 1 2 3 4 5 6 7 8 9 10; do                       # 10 min to the next scan, but open
-    sleep 60                                              # trades get their exits checked every minute
-    if [ "$i" -lt 10 ] && any_open; then
+  next=$(( $(date +%s) + 600 ))                           # 10 min to the next scan. meanwhile open trades get their
+  while [ "$(date +%s)" -lt "$next" ]; do                 # exits checked every 20 s: a fast rug falls far in a minute
+    sleep 20
+    if [ "$(date +%s)" -lt "$next" ] && any_open; then
       watch_both
     fi
   done
