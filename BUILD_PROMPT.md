@@ -57,23 +57,25 @@ a person should be able to read any file in a few minutes.
 ## 5. The pipeline (overview)
 
 ```
-DexScreener feeds ─► 13 hard checks (code) ─► judge (code/AI) ─► buy ─► fixed exits
-       scan            FACTS, ~2% survive       BUY / SKIP      flat $5   stop/ladder/trail/time/liq
+DexScreener + GeckoTerminal ─► 13 hard checks (code) ─► judge (code/AI) ─► buy ─► fixed exits
+            scan                 FACTS, ~2% survive       BUY / SKIP      flat $5   stop/ladder/trail/time/liq
 ```
 
 A session loop runs roughly every 10 minutes: watch open positions, scan for new tokens,
 run the judge on survivors, follow up on past verdicts. While any position is open, exits
-are re-checked every 60 seconds.
+are re-checked every ~15 seconds (paper and live books in parallel, 10 s apart).
 
 ## 6. Data sources (all have free tiers)
 
 - **DexScreener** — token discovery and live pool data (price, liquidity, 1h buys/sells, age). No key.
+- **GeckoTerminal** — trending Solana pools (1h and 6h) as a second lead source; also historical candles. No key, ~30 calls/min.
 - **Rugcheck** — risk score, LP lock, holder concentration, insider graph. Free key sent as a header.
 - **Jupiter** (lite-api) — swap quotes and swap-transaction building.
 - **Solana RPC** — balances, blockhash, simulate, send. Primary **Helius** (key in URL), with a
   backup RPC and a public fallback, tried in order; a dead/rate-limited endpoint falls through.
 - **Birdeye** (optional) — trend data (wallet growth, buy/sell USD split) for the AI shadow judge only.
-- **GeckoTerminal / CoinGecko** (optional) — historical candles for backtesting.
+- **CoinGecko** (optional) — backup candles for backtesting.
+- **RDAP** (rdap.org) — domain registration dates, for research only. No key.
 
 ## 7. Modules to build
 
@@ -86,7 +88,7 @@ Each is a small single-purpose file.
   (refuse if it already exists), print only the public address.
 - **`market.py`** — fetch a token's pool snapshot from DexScreener.
 - **`rugcheck.py`** — fetch and normalize a Rugcheck report (key as `X-API-KEY` header).
-- **`scan.py`** — pull DexScreener feeds, dedupe against tokens already checked today.
+- **`scan.py`** — pull DexScreener feeds and GeckoTerminal trending pools, dedupe against tokens already checked today, log each token's source to `sources.csv`.
 - **`check.py`** — run the 13 checks (§8) on a token; write the verdict row to `checks.csv`.
 - **`fmt.py`** — format scan output into readable KILL/REVIEW lines.
 - **`verdict.py`** — given a survivor, call the judge; on BUY, call the trade entry.
@@ -98,7 +100,11 @@ Each is a small single-purpose file.
 - **`trade.py`** — live execution (§12): load keypair, Jupiter quote → build → sign → simulate →
   send, balance-change confirmation, close empty token accounts to reclaim rent. Own hard cap.
   CLI: `status`, `dryrun-buy <mint> <usd>`, `roundtrip`, `close-empty [--send]`.
-- **`watch.py`** — for each open position, apply the exit rules (§10); on a full exit, reclaim rent.
+- **`watch.py`** — for each open position, apply the exit rules (§10) and the wallet tripwires; on a full exit, reclaim rent.
+- **`wallets.py`** — read-only wallet tripwires (§10): snapshot the creator wallet and top 10 holders after a buy, compare on every check.
+- **`close_now.py`** — sells a position at once when the dashboard's Close button asks.
+- **`sweep.py`** — sends profit above a floor to the operator's own wallet (address fixed in `.env`), weekly or by hand.
+- **`tokenfacts.py`** — research only: website domain age and top-holder funding sources for every judged token.
 - **`followup.py`** — after every verdict, record the token's price at +6h and +24h (to `followups.csv`).
 - **`report.py`** — end-of-day summary from the logs.
 - **`shadowjudge.py`** — an **AI judge that only watches** (§13): scores every survivor, logs to
@@ -119,7 +125,9 @@ A token must pass **all** of these or it is killed (recorded with the reason):
 | LP locked or burned (largest pool) | ≥ 90% |
 | Top-10 holders (pools & lockers excluded) | ≤ 30% |
 | Dev wallet (supply still with creator) | ≤ 5% |
+| Top-10 holders, lower bound (supply split over look-alike wallets) | ≥ 1% |
 | Insider-flagged holders + insider-graph hits | 0 |
+| Rugcheck "High holder correlation" warning | none |
 | Liquidity | ≥ $30,000 |
 | Your ticket as a share of the pool | ≤ 1% |
 | Minimum age | ≥ 30 minutes |
@@ -133,7 +141,8 @@ the code judge steps in (0 = immediately, for unattended live running).
 
 Code-judge rules — **each is a SKIP**; a token that breaks none is a **BUY** at the configured confidence:
 
-- 1h volume > **5×** pool liquidity → skip (bot churn)
+- 1h volume > **10×** pool liquidity → skip (bot churn)
+- 1h volume < **0.1×** pool liquidity → skip (a climb nobody is trading)
 - more sells than buys in the last hour → skip (holders dumping)
 - same ticker symbol seen under a different contract within **24h** → skip (copycat)
 - no website → skip
@@ -142,19 +151,25 @@ Code-judge rules — **each is a SKIP**; a token that breaks none is a **BUY** a
 
 ## 10. Exits (fixed in code before entry — `EXIT`)
 
-- **Hard stop:** −35% from entry.
+- **Hard stop:** −20% from entry.
 - **Take-profit ladder:** sell 50% at +100%, 25% at +200%.
 - **Trailing stop:** the remainder exits if price falls 30% from its peak.
-- **Time stop:** if not at least +20% after 6 hours, exit (dead money).
+- **Time stop:** if not at least +20% after 4 hours, exit (dead money). If it is, and no ladder sale has
+  happened, trail it tighter: out on a 20% drop from the peak.
 - **Liquidity stop:** if pool liquidity drops 40% from entry, exit now.
 - If the pool is gone, attempt to sell everything. A failed sell keeps the position and retries.
+- **Wallet tripwires** (`WALLET_WATCH`, modes off / shadow / on): at the first check after a buy, record the
+  creator wallet's balance and the top 10 holders' token accounts. Fire when the creator wallet is down 20%
+  (only if it held ≥ 0.5% of supply) or the top 10 are down 25% combined or 3 of them emptied. Checked
+  **before** the price rules. Ship in **shadow** mode (log the first hit per position, keep holding) until
+  the data shows it fires before drops rather than during pumps.
 
 ## 11. Position and risk limits (`book.guard()` — checked before any buy, before any network call)
 
 - Flat **$5** ticket.
-- Max **3** open positions (≈ $15 at risk).
+- Max **2** open positions (≈ $10 at risk).
 - Max **4** entries per day.
-- **Daily loss halt:** realized loss today ≥ $10 → no new entries until tomorrow.
+- **Daily loss halt:** realized loss today ≥ $7 → no new live entries until tomorrow.
 - **24h cooldown** per token after exiting it.
 - Honor the **pause flag** (`logs/PAUSE_BUYS`): paused = no new buys, but exits keep running.
 
@@ -164,6 +179,13 @@ Code-judge rules — **each is a SKIP**; a token that breaks none is a **BUY** a
 - Buy: Jupiter quote (SOL→token) → build the swap transaction → **sign** → **simulate** → send.
 - Confirm by polling the token balance change (quotes can lag a just-landed balance).
 - Slippage cap **300 bps**; always keep **0.02 SOL** reserve for fees.
+- **Entry price cap:** skip a buy whose quote is > 10% above the screen price the judge saw (slippage is
+  measured against the quote, so it can't catch a run-up).
+- **Exits pay to land:** Jupiter's "veryHigh" priority fee (capped at 0.001 SOL) on every sell; urgent exits
+  (stop, rug, pool gone, tripwire, Close button) accept 10% slippage.
+- **Re-send until it lands:** a busy pool drops low-fee transactions without an error. Re-send the same signed
+  transaction every 2 s until it confirms or its blockhash expires (same signature, so it can only land once),
+  then check history once more before calling it failed.
 - A per-buy **hard cap** independent of ticket size (e.g. $10) that the code enforces regardless of config.
 - After a full exit, close zero-balance token accounts to reclaim rent (finalized blockhash; simulate first).
 - Provide a **dry-run** path that does everything except send.
@@ -191,12 +213,14 @@ Code-judge rules — **each is a SKIP**; a token that breaks none is a **BUY** a
   includes `.env` or the key.
 - Ship it as an installable **PWA** (manifest + service worker; the service worker is network-only for
   `/api/*` so trading data is never served stale).
+- On phones, an app layout with tabs (Live, Paper, Calendar, Feed, Settings). The **Calendar** shows realized
+  P&L per day for a month or a week, green or red by size; tapping a day lists its trades.
 
 ## 15. Run modes and CLI
 
 - `run.sh forever` — loop until stopped, printing the prior day's report after each midnight.
 - `run.sh HH:MM` — stop at a local time.
-- Between scans, re-check exits every 60s while any position is open.
+- Between scans, re-check exits every ~15 s while any position is open.
 - Scripts must be portable across macOS and Linux (detect `date -j` vs `date -d`; pick the available
   notifier; skip AI steps when the AI CLI is absent).
 

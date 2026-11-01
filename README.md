@@ -22,13 +22,16 @@ judge  (code rules, or Claude/Grok)  →  BUY or SKIP
       │
       ▼
 flat $5 ticket  →  fixed exits (stop, take-profit ladder, trailing, time, liquidity)
+                    checked every ~15 s while a trade is open
 ```
 
 - **The 13 checks** (rug filter): risk score, LP locked, top-10 holder %, dev wallet %, insiders, liquidity, age, ticket-vs-pool share. All code, no AI.
 - **The judge** decides BUY/SKIP on the survivors. Default is the **code judge** (fixed rules). Optionally Claude or Grok.
-- **Exits are fixed before entry**: hard stop, a take-profit ladder, a trailing stop, a time stop, and a liquidity-drop stop.
+- **Exits are fixed before entry**: hard stop, a take-profit ladder, a trailing stop, a time stop, and a liquidity-drop stop. Exits pay a priority fee, and every swap is re-sent every 2 s until it lands or expires, so a busy pool can't silently drop it.
+- **Wallet tripwires** (`wallets.py`, log-only for now): after a buy the desk watches the creator wallet and the top 10 holders, and logs when they start selling, so the data can show whether they warn before the price falls.
 - **An optional AI "shadow" judge** scores every survivor but **never trades** — purely for research.
-- **A dashboard** (`dashboard/server.py`) shows live state, with a **Stop button** and a **log export**.
+- **Research data** (`tokenfacts.py`): for every judged token, the age of its website's domain and where its top holders got their first SOL. Logged only, to test as rules later.
+- **A dashboard** (`dashboard/server.py`) shows live state, with a **Stop button**, a **log export**, and on phones a **Calendar** tab of profit and loss per day.
 
 See `config.py` for every rule and threshold, and `TODO.md` for the roadmap. To understand or rebuild Sieve from first principles, `BUILD_PROMPT.md` is a complete spec/prompt that recreates it from scratch.
 
@@ -71,15 +74,16 @@ Going live: once you trust it in paper, set `PAPER = False`. Hard caps stay in t
 
 ## The rules (defaults — all in `config.py`)
 
-- **Entry limits:** $5 flat ticket, max 3 open, max 4 entries/day, daily-loss halt at $10, 24h cooldown per token.
-- **Rug filter:** risk ≤40/100, LP ≥90% locked, top-10 ≤30%, dev ≤5%, 0 insiders, liquidity ≥$30k, age 30min–72h, ticket ≤1% of pool.
-- **Exits:** stop −20%, sell half at +100% & a quarter at +200%, 30% trailing stop, 6h time stop if not +20%, exit if pool liquidity drops 40%.
+- **Entry limits:** $5 flat ticket, max 2 open, max 4 entries/day, daily-loss halt at $7, 24h cooldown per token. A live buy is skipped if its quote is more than 10% above the price the judge saw.
+- **Rug filter:** risk ≤40/100, LP ≥90% locked, top-10 between 1% and 30%, dev ≤5%, 0 insiders, no "high holder correlation" warning, liquidity ≥$30k, age 30min–72h, ticket ≤1% of pool.
+- **Code judge (each one is a skip):** 1h volume over 10× the pool or under 0.1× it, more sells than buys in the last hour, the same ticker under another contract within 24h, no website.
+- **Exits:** stop −20%, sell half at +100% & a quarter at +200%, 30% trailing stop, 4h time stop if not +20% (or out on a 20% drop from the peak if it is), exit if pool liquidity drops 40%.
 
 To retune, you edit `config.py` and nothing else.
 
 ## Running on a phone (optional)
 
-Sieve runs well on an always-on Android phone via **Termux + a Debian proot** (needed because the `solders` signing library ships glibc wheels). See `deploy/termux/` for the launcher, kill-switch, and boot scripts. The dashboard is a PWA you can "Add to Home screen".
+Sieve runs well on an always-on Android phone via **Termux + a Debian proot** (needed because the `solders` signing library ships glibc wheels). See `deploy/termux/` for the launcher, kill-switch, and boot scripts. The dashboard is a PWA you can "Add to Home screen". Keep the phone on a charger: if the battery dies, the desk stops and open trades go unwatched.
 
 ## Security notes
 

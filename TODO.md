@@ -3,9 +3,37 @@
 Written 2026-10-20. Start these once there are **2–3 weeks of live data, or 30+ closed trades**. Before that, every result is noise.
 
 Already done on 2026-10-20:
-- **Exit checks every minute** for open trades.
+- **Exit checks every minute** for open trades (every ~15 s since 2026-11-01).
 - **Empty token accounts closed** after each full sell, so their ~$0.21 deposits come back.
 - **An AI judge in shadow mode** (`shadowjudge.py`): it records verdicts but never trades.
+
+Done 2026-10-28 to 11-01:
+- **Stop −35% → −20%** (backtest over 79 passes: −15..−35 all about flat, −20 best; −40/−50 worse).
+- **Live entry price cap 5% → 10%** above the judge's screen price (DUBBLE was skipped at +6% and made ~$7 on paper).
+- **GeckoTerminal trending pools** as a second lead source. Each token's source goes to `logs/paper/sources.csv`. It added ~16% more tokens, not the 2–3× hoped for, and its free API rate-limits (HTTPError) several times a day.
+- **Wallet tripwires** (`wallets.py`, `WALLET_WATCH` mode `"shadow"`): snapshot of the creator wallet and the top 10 holders after a buy; first hit per position goes to `logs/<mode>/tripwires.csv`. First hit: AAPL (paper) at −10%, 18 min before the stop sold at −34%.
+- **Swaps re-sent every 2 s** until they confirm or the blockhash expires (`trade._land`). BLOB's live buy was dropped by a busy pool on 11-01 and the paper copy made +$5.75.
+- **Exits every ~15 s:** live and paper checked at the same time, 10 s apart. Python's start-up alone is ~4 s on the phone, so the old "20 s" loop was really ~30 s.
+- **Calendar tab** on the phone dashboard: profit and loss per day, month and week views.
+- **`tokenfacts.py`**: domain age of each judged token's website and the first funder of each top-10 holder, to `logs/paper/tokenfacts.csv`. Research only.
+
+---
+
+## Review on 2026-11-05
+
+Copy the phone's logs to `logs/phone_snapshot` first. Each item ends in "keep", "change" or "not enough data yet".
+- [ ] **Stops with real slippage.** Re-run the stop sweep with the real fills (stops filled at −27% to −39% on a −20% stop before the 15 s checks).
+- [ ] **Minimum liquidity ~$50k** instead of $30k. MOTH ($30.7k pool) rugged within the hour.
+- [ ] **Break-even stop** after the first take-profit.
+- [ ] **Absolute 1h volume floor** (~$40k), next to the 0.1×-pool ratio.
+- [ ] **Fees paid in SOL** as a quality filter (from the GMGN clip; a "min 0.25 SOL total fees" rule came up again 11-01).
+- [ ] **Dev launch count** and "dev wallet moving" (from the "follow the money" article).
+- [ ] **Website domain age** from `tokenfacts.csv` (history filled in for every judged token). Did young domains rug more than old ones? Free hosts?
+- [ ] **Holder funding clusters** from `tokenfacts.csv` (only from 11-01 on). Check whether a shared funder is a wallet factory or just an exchange hot wallet before reading anything into it.
+- [ ] **GeckoTerminal vs DexScreener** from `sources.csv`: which source's tokens did better, and is GeckoTerminal worth its rate-limit errors?
+- [ ] **The 10% entry cap:** what did the skipped buys do?
+- [ ] **Wallet tripwires** (after ~10 trades): did each hit come before a drop or during a pump? If mostly before, switch `WALLET_WATCH` to `"on"`, paper first.
+- [ ] **Buy priority fee:** if buys still get dropped with the re-send in place, try Jupiter's "high" level (capped ~0.0005 SOL) on buys.
 
 ---
 
@@ -24,7 +52,8 @@ Already done on 2026-10-20:
 - [ ] **Re-run `research/backtest_filters.py` at about 150 passed tokens** (about 2026-11-05; 63 on 2026-10-26, copy the phone's logs first). Also compare the code judge against "buy everything that passes the 13 checks": on 63 tokens the judge's buys averaged -$0.65 each vs -$0.24 for all passes. Don't ship the top10 / correlation / volume filters before then: they were fitted to the same 63 tokens.
 - A 90-day backtest isn't possible: the rug-check data was never stored as it was at the time. Bitquery's free pump.fun samples are one day, a few slots, one token (full history is paid). Decision 2026-10-26: keep collecting live paper data.
 - [ ] **Score each code-judge rule** (`CODE_JUDGE` in `config.py`). For each rule, check what the tokens it skipped did over 6h and 24h:
-  - `max_vol_to_liq_1h` (5×)
+  - `max_vol_to_liq_1h` (10× since 2026-10-24; was 5×)
+  - `min_vol_to_liq_1h` (0.1×)
   - `sells_over_buys_1h`
   - `copycat_hours`
   - `require_website`
@@ -178,7 +207,7 @@ For running the desk on the Nokia 7.1 phone and controlling it from the phone sc
 - **Installable PWA:** `manifest.webmanifest`, `sw.js` (network-only for `/api/*`, shell cached for offline), icons, apple-touch tags. Add-to-home-screen gives an app-like launcher.
 - Still binds to `127.0.0.1`. On the phone the browser is on the same device, so no network exposure.
 
-**Next for the phone (not done yet):** the Termux port itself — 3 swaps (`caffeinate`→`termux-wake-lock`, `date -j`→`date -d`, `osascript`→`termux-notification`), copy desk + `.env` + key over SSH (key file-to-file, never read), paper-test, stop the Mac copy, start the phone copy. Only one copy may run at a time (shared wallet). AI parts (shadow judge, weekly review) stay on the computer via the exported logs — opencode's free tier was unusable (hung, couldn't call tools) and `claude` needs a login.
+**Done since:** the desk now runs on the phone (see `deploy/termux/`); live there since 2026-10-26. The original plan was: the Termux port itself — 3 swaps (`caffeinate`→`termux-wake-lock`, `date -j`→`date -d`, `osascript`→`termux-notification`), copy desk + `.env` + key over SSH (key file-to-file, never read), paper-test, stop the Mac copy, start the phone copy. Only one copy may run at a time (shared wallet). AI parts (shadow judge, weekly review) stay on the computer via the exported logs — opencode's free tier was unusable (hung, couldn't call tools) and `claude` needs a login.
 
 ---
 
@@ -193,7 +222,7 @@ From @bl888m's "team of bots" article, its "CEO seat whose job is to disagree":
 ---
 
 ## Also noted (not 4–7)
-- **Auto-start after a Mac restart** with launchd, for the desk, the dashboard and `notify.sh`. Today a reboot stops trading silently and leaves open trades unwatched.
-- **Phone notifications** with ntfy or Telegram.
+- **Auto-start after a phone reboot:** install Termux:Boot and `deploy/termux/sieve-boot.sh`. Today a reboot or a flat battery stops trading silently and leaves open trades unwatched.
+- **Phone notifications:** `notify.sh` uses `termux-notification` on the phone. Remote ones (ntfy or Telegram) would reach you away from home.
 - **Moving to a server** (a VPS): replace `caffeinate`, `date -j` and `osascript`. **Only one copy may ever run at a time.**
 - **Ticket size:** stay at $5 until there are 30+ closed live trades with a positive result.
