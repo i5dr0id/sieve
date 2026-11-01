@@ -131,6 +131,16 @@ def totals(trades: list) -> dict:
     return {"realized": sum(float(t["pnl"] or 0) for t in trades), "closed": len(done), "wins": sum(1 for p in done if p > 0)}
 
 
+def calendar(trades: list) -> dict:
+    """the calendar tab: each day's realized P&L (sales land on the day they're made) and the trades behind it."""
+    days = {}
+    for t in trades:
+        d = days.setdefault(t["time"][:10], {"pnl": 0.0, "trades": []})
+        d["pnl"] += float(t["pnl"] or 0)
+        d["trades"].append({k: t.get(k) for k in ("time", "symbol", "action", "usd", "pnl", "reason", "tx")})
+    return days
+
+
 def state(mode: str, day: str) -> dict:
     base = f"logs/{mode}"
     # the scan and the judges log once, to the shared decisions log (logs/paper, since 2026-10-27).
@@ -193,6 +203,7 @@ def state(mode: str, day: str) -> dict:
                 "closed": len(closed), "wins": sum(1 for t in closed if float(t["pnl"]) > 0)},
         "trades": trades[-50:][::-1],
         "totals": totals(trades),
+        "calendar": calendar(trades),
         "log": tail(f"{base}/session.log", 80)[::-1],
     }
 

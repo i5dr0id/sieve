@@ -200,6 +200,37 @@ html.android .btn { border-radius: 99px; } html.android .btn:not(.red):not(.ghos
   background-size: 200% 100%; animation: sk 1.2s infinite; margin-bottom: 14px; }
 @keyframes sk { to { background-position: -200% 0; } }
 .foot { text-align: center; font-size: 12px; color: var(--text-3); margin-top: -8px; }
+
+/* ---------- calendar: each day's realized P&L, green or red, stronger the bigger it is */
+.seg { display: flex; background: var(--surface); border-radius: 9px; padding: 2px; margin-bottom: 10px; }
+.seg button { flex: 1; padding: 7px 0; border-radius: 7px; font-size: 14px; font-weight: 600; color: var(--text-2); }
+.seg button.on { background: var(--surface-2); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+html.android .seg, html.android .seg button { border-radius: 99px; }
+.segs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.calnav { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 12px; }
+.calnav .t { font-size: 20px; font-weight: 700; text-align: center; }
+.calnav .t small { display: block; font-size: 15px; font-weight: 600; margin-top: 1px; }
+.calnav button { width: 40px; height: 40px; border-radius: 50%; background: var(--surface); color: var(--accent); display: grid; place-items: center; }
+.calnav button[disabled] { opacity: .3; pointer-events: none; }
+.calnav button:active { background: var(--surface-2); }
+.dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; }
+.dow span { text-align: center; font-size: 11px; font-weight: 600; color: var(--text-2); }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 20px; }
+.cal .d { aspect-ratio: 1 / 1.15; border-radius: 9px; background: var(--surface); padding: 5px 3px 4px; display: flex; flex-direction: column;
+  justify-content: space-between; align-items: center; min-width: 0; text-align: center; position: relative; }
+.cal .d .n { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.cal .d .p { font-size: 11px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
+.cal .d .c { font-size: 9px; color: var(--text-2); }
+.cal .d.blank { background: transparent; }
+.cal .d.future { opacity: .35; }
+.cal .d.today { box-shadow: inset 0 0 0 2px var(--accent); }
+.cal .d.has .n, .cal .d.has .c { color: var(--text); }
+.cal button.d:active { transform: scale(.94); }
+.wk .row { border-radius: 0; }
+.wk .tint { position: absolute; inset: 0; pointer-events: none; }
+.wk .row > :not(.tint) { position: relative; }
+.wk .dn { width: 44px; text-align: center; flex-shrink: 0; }
+.wk .dn b { display: block; font-size: 22px; font-weight: 700; } .wk .dn span { font-size: 12px; color: var(--text-2); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -209,6 +240,7 @@ html.android .btn { border-radius: 99px; } html.android .btn:not(.red):not(.ghos
 <main>
   <section class="page on" id="p-live"><div class="skel"></div><div class="skel" style="height:60px"></div><div class="skel"></div></section>
   <section class="page" id="p-paper"></section>
+  <section class="page" id="p-cal"></section>
   <section class="page" id="p-feed"></section>
   <section class="page" id="p-more"></section>
 </main>
@@ -216,6 +248,7 @@ html.android .btn { border-radius: 99px; } html.android .btn:not(.red):not(.ghos
 <nav class="tabbar" id="tabbar">
   <button class="tab on" data-tab="live"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 4 8-9"/><path d="M15 7h5v5"/></svg></span>Live<span class="dot" id="dot-live"></span></button>
   <button class="tab" data-tab="paper"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></span>Paper<span class="dot" id="dot-paper"></span></button>
+  <button class="tab" data-tab="cal"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>Calendar</button>
   <button class="tab" data-tab="feed"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg></span>Feed<span class="dot" id="dot-feed">!</span></button>
   <button class="tab" data-tab="more"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>Settings</button>
 </nav>
@@ -229,8 +262,10 @@ const $ = (s, r = document) => r.querySelector(s);
 const UA = navigator.userAgent;
 const PLAT = /iPhone|iPad|iPod/.test(UA) ? "ios" : "android";
 document.documentElement.classList.add(PLAT);
-const TITLES = { live: "Live", paper: "Paper", feed: "Feed", more: "Settings" };
+const TITLES = { live: "Live", paper: "Paper", cal: "Calendar", feed: "Feed", more: "Settings" };
 const S = { live: null, paper: null, token: null, tab: "live", fail: 0, busy: {} };
+const CAL = { mode: "live", view: "month", at: new Date() };   // `at`: any day inside the month or week on screen
+try { Object.assign(CAL, JSON.parse(localStorage.getItem("sieve.cal") || "{}"), { at: new Date() }); } catch {}
 
 // ---------- formatting
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -317,8 +352,8 @@ function posRows(st, mode) {
       <span class="chev">${I.chev}</span></button>`;
   }).join("") + `</div>`;
 }
-function tradeRows(st, n = 12) {
-  const t = st.trades.slice(0, n);
+function tradeRows(st, n = 12) { return tradeList(st.trades.slice(0, n)); }
+function tradeList(t) {
   if (!t.length) return `<div class="list"><div class="empty">No trades yet</div></div>`;
   return `<div class="list">` + t.map((r) => {
     const open = r.action === "open", p = parseFloat(r.pnl);
@@ -376,6 +411,77 @@ function renderPaper() {
     <div class="sec"><span>Recent trades</span></div>${tradeRows(s)}
     <div class="foot">Paper fills every BUY verdict · same exits as live</div>`;
 }
+// ---------- calendar
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const monday = (d) => addDays(d, -((d.getDay() + 6) % 7));
+const flat = (n) => Math.abs(n) < 0.005;
+const short = (n) => flat(n) ? "0.00" : (n < 0 ? "−" : "+") + (Math.abs(n) >= 100 ? Math.round(Math.abs(n)) : Math.abs(n).toFixed(2));
+function tint(pnl, max) {                            // the view's biggest day gets the strongest colour
+  if (pnl == null || flat(pnl)) return "";
+  const k = Math.round(22 + 48 * Math.min(1, Math.abs(pnl) / (max || 1)));
+  return `background:color-mix(in srgb, var(--${pnl > 0 ? "green" : "red"}) ${k}%, var(--surface))`;
+}
+function calRange() {
+  const a = CAL.at;
+  if (CAL.view === "week") { const f = monday(a); return [f, addDays(f, 6)]; }
+  return [new Date(a.getFullYear(), a.getMonth(), 1), new Date(a.getFullYear(), a.getMonth() + 1, 0)];
+}
+function renderCalendar() {
+  const cal = S[CAL.mode].calendar || {}, today = ymd(new Date()), [first, last] = calRange();
+  const days = [];
+  for (let d = first; d <= last; d = addDays(d, 1)) {
+    const k = ymd(d), x = cal[k];
+    days.push({ d, k, pnl: x ? x.pnl : null, n: x ? new Set(x.trades.map((t) => t.symbol)).size : 0 });
+  }
+  const traded = days.filter((i) => i.n), total = traded.reduce((s, i) => s + i.pnl, 0);
+  const max = Math.max(0, ...traded.map((i) => Math.abs(i.pnl)));
+  const green = traded.filter((i) => i.pnl > 0 && !flat(i.pnl)).length, red = traded.filter((i) => i.pnl < 0 && !flat(i.pnl)).length;
+  const best = traded.length ? traded.reduce((a, b) => (b.pnl > a.pnl ? b : a)) : null;
+  const worst = traded.length ? traded.reduce((a, b) => (b.pnl < a.pnl ? b : a)) : null;
+  const oldest = Object.keys(cal).sort()[0];
+  const title = CAL.view === "month" ? first.toLocaleDateString([], { month: "long", year: "numeric" })
+    : `${first.toLocaleDateString([], { day: "numeric", month: "short" })} – ${last.toLocaleDateString([], { day: "numeric", month: "short" })}`;
+  const when = (i) => i.d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  const seg = (act, cur, opts) => `<div class="seg">${opts.map(([v, l]) => `<button class="${cur === v ? "on" : ""}" data-act="${act}" data-v="${v}">${l}</button>`).join("")}</div>`;
+  const chev = (flip) => `<svg width="10" height="16" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ${flip ? 'style="transform:scaleX(-1)"' : ""}><path d="M1 1l6 6-6 6"/></svg>`;
+
+  let body;
+  if (CAL.view === "month") {
+    const lead = (first.getDay() + 6) % 7;
+    body = `<div class="dow">${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => `<span>${d}</span>`).join("")}</div>
+      <div class="cal num">${'<div class="d blank"></div>'.repeat(lead)}${days.map((i) => {
+        const c = `d${i.n ? " has" : ""}${i.k === today ? " today" : ""}${i.k > today ? " future" : ""}`;
+        const inner = `<span class="n">${i.d.getDate()}</span>${i.n ? `<span class="p">${short(i.pnl)}</span><span class="c">${i.n} ${i.n === 1 ? "coin" : "coins"}</span>` : "<span></span>"}`;
+        return i.n ? `<button class="${c}" style="${tint(i.pnl, max)}" data-act="calday" data-day="${i.k}">${inner}</button>` : `<div class="${c}">${inner}</div>`;
+      }).join("")}</div>`;
+  } else {
+    body = `<div class="list wk">${days.map((i) => {
+      const x = cal[i.k], syms = x ? [...new Set(x.trades.map((t) => t.symbol))] : [];
+      const inner = `<div class="tint" style="${tint(i.pnl, max)}"></div>
+        <div class="dn"><b class="num">${i.d.getDate()}</b><span>${i.d.toLocaleDateString([], { weekday: "short" })}</span></div>
+        <div class="main"><div class="title">${syms.length ? syms.map(sym).join(", ") : '<span class="muted" style="font-weight:400">No trades</span>'}</div>
+          <div class="meta">${i.k === today ? "Today" : i.k > today ? "Coming up" : syms.length ? syms.length + (syms.length === 1 ? " coin" : " coins") : ""}</div></div>
+        ${syms.length ? `<div class="end num"><div class="a">${usd(i.pnl, true)}</div></div><span class="chev">${I.chev}</span>` : ""}`;
+      return syms.length ? `<button class="row" data-act="calday" data-day="${i.k}">${inner}</button>` : `<div class="row" style="${i.k > today ? "opacity:.4" : ""}">${inner}</div>`;
+    }).join("")}</div>`;
+  }
+  return hdr("Calendar") + offline() +
+    `<div class="segs">${seg("calmode", CAL.mode, [["live", "Live"], ["paper", "Paper"]])}${seg("calview", CAL.view, [["month", "Month"], ["week", "Week"]])}</div>
+    <div class="calnav">
+      <button data-act="calstep" data-v="-1" ${oldest && ymd(first) > oldest ? "" : "disabled"} aria-label="Earlier">${chev(true)}</button>
+      <div class="t">${esc(title)}<small class="num ${cls(total)}">${traded.length ? usd(total, true) : "No trades"}</small></div>
+      <button data-act="calstep" data-v="1" ${ymd(last) < today ? "" : "disabled"} aria-label="Later">${chev()}</button>
+    </div>
+    ${body}
+    ${traded.length ? `<div class="list">
+      ${row("Green days", `<span class="up">${green}</span>`)}${row("Red days", `<span class="down">${red}</span>`)}
+      ${row("Best day", `${usd(best.pnl, true)} · ${when(best)}`, cls(best.pnl))}${row("Worst day", `${usd(worst.pnl, true)} · ${when(worst)}`, cls(worst.pnl))}
+    </div>` : ""}
+    <div class="foot">${CAL.mode === "live" ? "Real money" : "Paper"} · realized P&L, counted on the day each sale was made</div>`;
+}
+function calSave() { try { localStorage.setItem("sieve.cal", JSON.stringify({ mode: CAL.mode, view: CAL.view })); } catch {} $("#p-cal").innerHTML = renderCalendar(); buzz(5); }
+
 function renderFeed() {
   const s = S.paper, f = s.funnel, fu = s.followups;
   const sc = (x) => x && x.n ? `<span class="${cls(x.avg)}">${pct(x.avg)}</span>` : "–";
@@ -453,6 +559,7 @@ function render() {
   }
   $("#p-live").innerHTML = renderLive();
   $("#p-paper").innerHTML = renderPaper();
+  $("#p-cal").innerHTML = renderCalendar();
   $("#p-feed").innerHTML = renderFeed();
   $("#p-more").innerHTML = renderMore();
   const n = (st) => st.positions.length;
@@ -565,6 +672,21 @@ const ACT = {
     const st = S[btn.dataset.mode];
     sheet(`<h2>${btn.dataset.mode === "live" ? "Live log" : "Engine log"}</h2><p class="lead">Newest first</p>
       <div class="log">${esc(st.log.slice(0, 80).join("\n")) || "Empty"}</div><button class="btn ghost" data-act="dismiss">Done</button>`);
+  },
+  calmode(btn) { CAL.mode = btn.dataset.v; calSave(); },
+  calview(btn) { CAL.view = btn.dataset.v; calSave(); },
+  calstep(btn) {
+    const n = +btn.dataset.v, a = CAL.at;
+    CAL.at = CAL.view === "week" ? addDays(a, 7 * n) : new Date(a.getFullYear(), a.getMonth() + n, 1);
+    calSave();
+  },
+  calday(btn) {
+    const day = btn.dataset.day, x = (S[CAL.mode].calendar || {})[day];
+    if (!x) return;
+    const d = new Date(day + "T12:00:00");
+    sheet(`<h2>${esc(d.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" }))}</h2>
+      <p class="lead">${CAL.mode === "live" ? "Real money" : "Paper"} · <span class="num ${cls(x.pnl)}" style="font-weight:600">${usd(x.pnl, true)}</span> realized</p>
+      ${tradeList([...x.trades].reverse())}<button class="btn ghost" data-act="dismiss">Done</button>`);
   },
   dismiss() { closeSheet(); },
 };
