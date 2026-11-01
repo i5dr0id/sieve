@@ -50,6 +50,7 @@ while [ "$(date +%s)" -lt "$end_ts" ]; do
   watch_both
   $PY scan.py 2>&1 | $PY fmt.py
   $PY autojudge.py 2>&1 | sed "s/^/$(date +%H:%M) /"      # judges REVIEWs nobody judged in time; fills both modes
+  ($PY tokenfacts.py 2>&1 | sed "s/^/$(date +%H:%M) /") &  # research only: domain age + holder funding per judged token
   [ -n "$HAVE_CLAUDE" ] && $PY shadowjudge.py 2>&1 | sed "s/^/$(date +%H:%M) /"   # AI verdicts, logged only, never traded (skipped on the phone)
   $PY followup.py 2>&1 | sed "s/^/$(date +%H:%M) /"       # +6h / +24h prices for every judged token
   if [ "$(date +%Y-%m-%d)" != "$day" ]; then              # new day: report the one that just ended
