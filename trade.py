@@ -114,21 +114,56 @@ def _swap(q: dict, kp: Keypair, send: bool, priority: bool = False) -> dict:
         "quoteResponse": q, "userPublicKey": str(kp.pubkey()),
         "dynamicComputeUnitLimit": True, "prioritizationFeeLamports": PRIORITY_FEE if priority else "auto"})
     r.raise_for_status()
-    unsigned = VersionedTransaction.from_bytes(base64.b64decode(r.json()["swapTransaction"]))
+    swap = r.json()
+    unsigned = VersionedTransaction.from_bytes(base64.b64decode(swap["swapTransaction"]))
     tx = base64.b64encode(bytes(VersionedTransaction(unsigned.message, [kp]))).decode()
     if not send:
         sim = rpc("simulateTransaction", [tx, {"encoding": "base64", "sigVerify": True}])["value"]
         return {"sent": False, "sim_ok": sim["err"] is None, "sim_err": sim["err"],
                 "logs": (sim.get("logs") or [])[-2:]}
     sig = rpc("sendTransaction", [tx, {"encoding": "base64", "maxRetries": 3}])
-    for _ in range(30):
-        st = rpc("getSignatureStatuses", [[sig]])["value"][0]
-        if st and st.get("confirmationStatus") in ("confirmed", "finalized"):
-            if st.get("err"):
-                raise RuntimeError(f"tx failed on chain {st['err']}: https://solscan.io/tx/{sig}")
-            return {"sent": True, "sig": sig}
-        time.sleep(2)
-    raise RuntimeError(f"not confirmed after 60s, check https://solscan.io/tx/{sig}")
+    return _land(tx, sig, swap.get("lastValidBlockHeight"))
+
+
+RESEND_S = 2         # a busy pool drops low-tip txs without an error (BLOB 2026-11-01): send it again this often
+LAND_MAX_S = 90      # Jupiter's blockhash lives ~60-90 s; past that the tx can never land
+
+
+def _status(sig: str, history: bool = False) -> dict | None:
+    return rpc("getSignatureStatuses", [[sig], {"searchTransactionHistory": history}])["value"][0]
+
+
+def _done(st: dict | None, sig: str) -> dict | None:
+    if st and st.get("confirmationStatus") in ("confirmed", "finalized"):
+        if st.get("err"):
+            raise RuntimeError(f"tx failed on chain {st['err']}: https://solscan.io/tx/{sig}")
+        return {"sent": True, "sig": sig}
+    return None
+
+
+def _land(tx: str, sig: str, last_valid: int | None) -> dict:
+    """wait for the tx, re-sending the same signed bytes every RESEND_S until it confirms or its blockhash expires.
+    same signature, so it can only ever land once. a re-send that errors (already processed, rate limit) is ignored."""
+    t0 = time.time()
+    while True:
+        if (ok := _done(_status(sig), sig)):
+            return ok
+        expired = last_valid and rpc("getBlockHeight", [{"commitment": "confirmed"}]) > last_valid
+        if expired or time.time() - t0 > LAND_MAX_S:
+            break
+        time.sleep(RESEND_S)
+        try:
+            rpc("sendTransaction", [tx, {"encoding": "base64", "skipPreflight": True, "maxRetries": 0}])
+        except Exception:
+            pass
+    for _ in range(5):        # seen but not yet confirmed as it expired: it can still confirm. give it a few seconds
+        st = _status(sig, history=True)
+        if (ok := _done(st, sig)):
+            return ok
+        if not st:
+            break
+        time.sleep(RESEND_S)
+    raise RuntimeError(f"not confirmed after {time.time() - t0:.0f}s, check https://solscan.io/tx/{sig}")
 
 
 def _changed(read, before, tries=15):

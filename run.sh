@@ -2,7 +2,7 @@
 # session runner. ONE engine, BOTH modes, every cycle:
 #   the scan, the judges and the follow-ups run once and are logged as paper (the always-on data);
 #   every BUY verdict then becomes a position in each mode that allows it (enter.py: own limits, own pause);
-#   exits (and the wallet tripwires) are checked for both books every 10 min, and every 20 s while anything is open.
+#   exits (and the wallet tripwires) are checked for both books every 10 min, and every ~15 s while anything is open.
 #   ./run.sh 00:00      (stop time, local, HH:MM; defaults to midnight)
 #   ./run.sh forever    (never stops; prints yesterday's reports just after each midnight)
 # output: logs/paper/session.log gets everything. live buys, sells and reports are copied to logs/live/session.log.
@@ -19,9 +19,11 @@ to_epoch() { date -j -f "%Y-%m-%d %H:%M" "$1" +%s 2>/dev/null || date -d "$1" +%
 # code judge (which makes the real buy/sell calls) always runs. run them on the computer.
 command -v claude >/dev/null 2>&1 && HAVE_CLAUDE=1 || HAVE_CLAUDE=
 
-watch_both() {                         # live first: real money gets the freshest price
-  SIEVE_MODE=live $PY watch.py 2>&1 | sed "s/^/$(date +%H:%M) WATCH /" | tee -a "$LIVE_LOG"
-  SIEVE_MODE=paper $PY watch.py 2>&1 | sed "s/^/$(date +%H:%M) WATCH /"
+watch_both() {                         # both books at once: separate files, and python's ~4 s start-up on the phone
+  SIEVE_MODE=live $PY watch.py 2>&1 | sed "s/^/$(date +%H:%M) WATCH /" | tee -a "$LIVE_LOG" &   # isn't paid twice
+  local live=$!
+  SIEVE_MODE=paper $PY watch.py 2>&1 | sed "s/^/$(date +%H:%M) WATCH /" &
+  wait $live $!                        # just these two: monday's weekly review also runs in the background
 }
 any_open() {
   for m in live paper; do
@@ -59,8 +61,8 @@ while [ "$(date +%s)" -lt "$end_ts" ]; do
     fi
   fi
   next=$(( $(date +%s) + 600 ))                           # 10 min to the next scan. meanwhile open trades get their
-  while [ "$(date +%s)" -lt "$next" ]; do                 # exits checked every 20 s: a fast rug falls far in a minute
-    sleep 20
+  while [ "$(date +%s)" -lt "$next" ]; do                 # exits checked every ~15 s (10 s + the check itself):
+    sleep 10                                              # a fast rug falls far in a minute
     if [ "$(date +%s)" -lt "$next" ] && any_open; then
       watch_both
     fi
