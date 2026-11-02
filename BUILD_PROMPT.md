@@ -178,7 +178,10 @@ Code-judge rules — **each is a SKIP**; a token that breaks none is a **BUY** a
 - Load the keypair from `WALLET_FILE`. Never log it.
 - Buy: Jupiter quote (SOL→token) → build the swap transaction → **sign** → **simulate** → send.
 - Confirm by polling the token balance change (quotes can lag a just-landed balance).
-- Slippage cap **300 bps**; always keep **0.02 SOL** reserve for fees.
+- Slippage cap **300 bps** on sells; always keep **0.02 SOL** reserve for fees.
+- **Buys may slip up to 800 bps, inside the entry price cap:** the slippage is cut so quote + slippage never fills
+  more than 10% above the screen price (floor 300 bps). At 3% the hot tokens moved between quote and send and the
+  swap failed with Jupiter error 6001; on a 6001 (nothing bought) re-quote once and try again under the same cap.
 - **Entry price cap:** skip a buy whose quote is > 10% above the screen price the judge saw (slippage is
   measured against the quote, so it can't catch a run-up).
 - **Exits pay to land:** Jupiter's "veryHigh" priority fee (capped at 0.001 SOL) on every sell; urgent exits

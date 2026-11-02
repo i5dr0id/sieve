@@ -34,6 +34,8 @@ Then edit `DESK` in `sieve-start.sh` below to point at your container desk path
 ## Notes
 
 - **Only one copy may run at a time** against a wallet. Stop any other copy first.
-- Set **Termux → Battery → Unrestricted** or Android may kill it.
+- Set **Termux → Battery → Unrestricted** or Android may kill it. Do the same for Termux:Boot.
+- **Termux:Boot must come from the same place as Termux** (both F-Droid, or both GitHub): Android refuses add-ons signed by a different key. Open it once after installing, or it never runs at boot.
+- **Use a wall charger.** A computer's USB port only trickles (Android shows "USB powered"), which loses to the desk's drain; a wall charger shows "AC powered". Auto-start brings the desk back after a reboot, but a phone that's off can't trade or watch open positions.
 - The dashboard binds `HOST=0.0.0.0` so you can open it from another device on your LAN at `http://<phone-ip>:8787`, or on the phone itself at `http://127.0.0.1:8787` (installable as a PWA).
 - `termux-api` + the Termux:API app give you phone notifications on buys/sells/errors.

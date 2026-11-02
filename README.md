@@ -74,7 +74,7 @@ Going live: once you trust it in paper, set `PAPER = False`. Hard caps stay in t
 
 ## The rules (defaults — all in `config.py`)
 
-- **Entry limits:** $5 flat ticket, max 2 open, max 4 entries/day, daily-loss halt at $7, 24h cooldown per token. A live buy is skipped if its quote is more than 10% above the price the judge saw.
+- **Entry limits:** $5 flat ticket, max 2 open, max 4 entries/day, daily-loss halt at $7, 24h cooldown per token. A live buy is skipped if its quote is more than 10% above the price the judge saw; buys may slip up to 8% but never past that 10%, and get one fresh quote if the price moves first.
 - **Rug filter:** risk ≤40/100, LP ≥90% locked, top-10 between 1% and 30%, dev ≤5%, 0 insiders, no "high holder correlation" warning, liquidity ≥$30k, age 30min–72h, ticket ≤1% of pool.
 - **Code judge (each one is a skip):** 1h volume over 10× the pool or under 0.1× it, more sells than buys in the last hour, the same ticker under another contract within 24h, no website.
 - **Exits:** stop −20%, sell half at +100% & a quarter at +200%, 30% trailing stop, 4h time stop if not +20% (or out on a 20% drop from the peak if it is), exit if pool liquidity drops 40%.

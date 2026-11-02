@@ -16,6 +16,8 @@ Done 2026-10-28 to 11-01:
 - **Exits every ~15 s:** live and paper checked at the same time, 10 s apart. Python's start-up alone is ~4 s on the phone, so the old "20 s" loop was really ~30 s.
 - **Calendar tab** on the phone dashboard: profit and loss per day, month and week views.
 - **`tokenfacts.py`**: domain age of each judged token's website and the first funder of each top-10 holder, to `logs/paper/tokenfacts.csv`. Research only.
+- **Auto-start after a phone reboot** (11-01): Termux:Boot from F-Droid and `deploy/termux/sieve-boot.sh`. Tested: the desk was back ~4 min after a reboot, with no input.
+- **Buy slippage 3% → up to 8%, inside the 10% entry cap** (11-02), and one re-quote on Jupiter error 6001. AAPL (10-31) and Ahsoka (11-02) failed live with 6001 while their paper copies ran; Ahsoka's made ~$8.
 
 ---
 
@@ -33,6 +35,9 @@ Copy the phone's logs to `logs/phone_snapshot` first. Each item ends in "keep", 
 - [ ] **GeckoTerminal vs DexScreener** from `sources.csv`: which source's tokens did better, and is GeckoTerminal worth its rate-limit errors?
 - [ ] **The 10% entry cap:** what did the skipped buys do?
 - [ ] **Wallet tripwires** (after ~10 trades): did each hit come before a drop or during a pump? If mostly before, switch `WALLET_WATCH` to `"on"`, paper first.
+- [ ] **"Sellers in control" judge rule** (more sells than buys in 1h). 5 of its 6 skips with follow-ups went +76% to +666% at 24h; only MERGE rugged. Loosen to sells > 1.5× buys, or drop it?
+- [ ] **Rugcheck outages:** count them (10-31 02:27–16:30 errors, 11-02 13:14–14:21 unreachable). Worth a backup checker (mint/freeze authority, Token-2022, top 10, dev share from our own RPC), logged next to Rugcheck first?
+- [ ] **The new buy slippage:** did live buys land, and how far above the screen price did they fill?
 - [ ] **Buy priority fee:** if buys still get dropped with the re-send in place, try Jupiter's "high" level (capped ~0.0005 SOL) on buys.
 
 ---
@@ -222,7 +227,6 @@ From @bl888m's "team of bots" article, its "CEO seat whose job is to disagree":
 ---
 
 ## Also noted (not 4–7)
-- **Auto-start after a phone reboot:** install Termux:Boot and `deploy/termux/sieve-boot.sh`. Today a reboot or a flat battery stops trading silently and leaves open trades unwatched.
 - **Phone notifications:** `notify.sh` uses `termux-notification` on the phone. Remote ones (ntfy or Telegram) would reach you away from home.
 - **Moving to a server** (a VPS): replace `caffeinate`, `date -j` and `osascript`. **Only one copy may ever run at a time.**
 - **Ticket size:** stay at $5 until there are 30+ closed live trades with a positive result.
