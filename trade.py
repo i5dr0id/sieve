@@ -13,7 +13,7 @@ from solders.instruction import Instruction, AccountMeta
 from solders.message import Message
 from solders.hash import Hash
 from solders.pubkey import Pubkey
-from config import (PAPER, RPC_URLS, WALLET_FILE, SLIPPAGE_BPS, MAX_ENTRY_PREMIUM_PCT, MIN_SOL_RESERVE, TICKET_USD,
+from config import (PAPER, RPC_URLS, WALLET_FILE, SLIPPAGE_BPS, BUY_SLIPPAGE_BPS, MAX_ENTRY_PREMIUM_PCT, MIN_SOL_RESERVE, TICKET_USD,
                     DECISIONS, scrub)
 import book
 
@@ -188,6 +188,21 @@ class PriceRan(RuntimeError):
     """the quote is too far above the price the judge decided on. a skip, not a failure."""
 
 
+def _buy_quote(mint: str, lamports: int, usd: float, dec: int, screen_price: float | None) -> dict:
+    """a buy quote whose worst fill (quote + slippage) stays within MAX_ENTRY_PREMIUM_PCT of the screen price.
+    raises PriceRan (nothing sent) when even the quote is over it."""
+    if not screen_price:
+        return quote(SOL, mint, lamports)
+    q = quote(SOL, mint, lamports, BUY_SLIPPAGE_BPS)
+    premium = (usd / (int(q["outAmount"]) / 10 ** dec) / screen_price - 1) * 100
+    if premium > MAX_ENTRY_PREMIUM_PCT:
+        raise PriceRan(f"price ran {premium:+.1f}% above screen (max {MAX_ENTRY_PREMIUM_PCT}%)")
+    room = int(((1 + MAX_ENTRY_PREMIUM_PCT / 100) / (1 + premium / 100) - 1) * 10000)   # slippage left under the cap
+    if room < BUY_SLIPPAGE_BPS:
+        q = quote(SOL, mint, lamports, max(SLIPPAGE_BPS, room))
+    return q
+
+
 def buy(mint: str, usd: float = TICKET_USD, dry: bool = False, screen_price: float | None = None) -> dict:
     """Spend `usd` of SOL on `mint`. Returns the real fill: tokens, price per token, tx.
     with `screen_price`, refuses (PriceRan) before sending when the quote is over MAX_ENTRY_PREMIUM_PCT above it."""
@@ -203,14 +218,18 @@ def buy(mint: str, usd: float = TICKET_USD, dry: bool = False, screen_price: flo
     bal = sol_balance(kp.pubkey())
     if send and bal - lamports / 1e9 < MIN_SOL_RESERVE:
         raise RuntimeError(f"refused: {bal:.4f} SOL leaves less than the {MIN_SOL_RESERVE} SOL fee reserve")
-    q = quote(SOL, mint, lamports)
     dec = decimals(mint)
-    if screen_price:
-        premium = (usd / (int(q["outAmount"]) / 10 ** dec) / screen_price - 1) * 100
-        if premium > MAX_ENTRY_PREMIUM_PCT:
-            raise PriceRan(f"price ran {premium:+.1f}% above screen (max {MAX_ENTRY_PREMIUM_PCT}%)")
     before = token_raw(kp.pubkey(), mint) if send else 0
-    res = _swap(q, kp, send)
+    for attempt in (1, 2):
+        q = _buy_quote(mint, lamports, usd, dec, screen_price)
+        try:
+            res = _swap(q, kp, send)
+            break
+        except RuntimeError as e:                    # 6001: the price moved past the slippage before it filled.
+            if "'Custom': 6001" not in str(e):       # nothing was bought, so quote again once, under the same cap
+                raise
+            if attempt == 2:
+                raise RuntimeError("price moved past the slippage limit twice (error 6001), nothing bought") from None
     got = (_changed(lambda: token_raw(kp.pubkey(), mint), before) - before) if send else int(q["outAmount"])
     if got <= 0:
         raise RuntimeError(f"swap confirmed but no tokens arrived: {res}")
