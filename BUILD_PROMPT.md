@@ -58,7 +58,7 @@ a person should be able to read any file in a few minutes.
 
 ```
 DexScreener + GeckoTerminal ─► 13 hard checks (code) ─► judge (code/AI) ─► buy ─► fixed exits
-            scan                 FACTS, ~2% survive       BUY / SKIP      flat $5   stop/ladder/trail/time/liq
+            scan                 FACTS, ~2% survive       BUY / SKIP      flat $10  stop/lock/ladder/trail/time/liq
 ```
 
 A session loop runs roughly every 10 minutes: watch open positions, scan for new tokens,
@@ -128,7 +128,7 @@ A token must pass **all** of these or it is killed (recorded with the reason):
 | Top-10 holders, lower bound (supply split over look-alike wallets) | ≥ 1% |
 | Insider-flagged holders + insider-graph hits | 0 |
 | Rugcheck "High holder correlation" warning | none |
-| Liquidity | ≥ $30,000 |
+| Liquidity | ≥ $40,000 |
 | Your ticket as a share of the pool | ≤ 1% |
 | Minimum age | ≥ 30 minutes |
 | Maximum age | ≤ 72 hours |
@@ -143,7 +143,8 @@ Code-judge rules — **each is a SKIP**; a token that breaks none is a **BUY** a
 
 - 1h volume > **10×** pool liquidity → skip (bot churn)
 - 1h volume < **0.1×** pool liquidity → skip (a climb nobody is trading)
-- more sells than buys in the last hour → skip (holders dumping)
+- (default **off**) more sells than buys in the last hour → skip. *Off since the 2026-11-05 review: 7 of its
+  8 skips ran +50% or more.*
 - same ticker symbol seen under a different contract within **24h** → skip (copycat)
 - no website → skip
 - (optional, default **off**) price already up > X% in 1h → skip. *Off by default because backtesting
@@ -152,6 +153,9 @@ Code-judge rules — **each is a SKIP**; a token that breaks none is a **BUY** a
 ## 10. Exits (fixed in code before entry — `EXIT`)
 
 - **Hard stop:** −20% from entry.
+- **Profit lock:** once a trade has been +25% (before any ladder sale), the stop moves up to the entry price.
+  A replay of 96 tokens on 1-minute candles found +25/entry beat no lock, while a tighter +15%/+5% sold the
+  runners on their first dip.
 - **Take-profit ladder:** sell 50% at +100%, 25% at +200%.
 - **Trailing stop:** the remainder exits if price falls 30% from its peak.
 - **Time stop:** if not at least +20% after 4 hours, exit (dead money). If it is, and no ladder sale has
@@ -162,14 +166,14 @@ Code-judge rules — **each is a SKIP**; a token that breaks none is a **BUY** a
   creator wallet's balance and the top 10 holders' token accounts. Fire when the creator wallet is down 20%
   (only if it held ≥ 0.5% of supply) or the top 10 are down 25% combined or 3 of them emptied. Checked
   **before** the price rules. Ship in **shadow** mode (log the first hit per position, keep holding) until
-  the data shows it fires before drops rather than during pumps.
+  the data shows it fires before drops rather than during pumps. (Sieve switched it **on** after 6 of 7 hits did.)
 
 ## 11. Position and risk limits (`book.guard()` — checked before any buy, before any network call)
 
-- Flat **$5** ticket.
-- Max **2** open positions (≈ $10 at risk).
+- Flat **$10** ticket.
+- Max **2** open positions (≈ $20 at risk).
 - Max **4** entries per day.
-- **Daily loss halt:** realized loss today ≥ $7 → no new live entries until tomorrow.
+- **Daily loss halt:** realized loss today ≥ $12 → no new live entries until tomorrow.
 - **24h cooldown** per token after exiting it.
 - Honor the **pause flag** (`logs/PAUSE_BUYS`): paused = no new buys, but exits keep running.
 
@@ -184,7 +188,8 @@ Code-judge rules — **each is a SKIP**; a token that breaks none is a **BUY** a
   swap failed with Jupiter error 6001; on a 6001 (nothing bought) re-quote once and try again under the same cap.
 - **Entry price cap:** skip a buy whose quote is > 10% above the screen price the judge saw (slippage is
   measured against the quote, so it can't catch a run-up).
-- **Exits pay to land:** Jupiter's "veryHigh" priority fee (capped at 0.001 SOL) on every sell; urgent exits
+- **Buys and exits pay to land:** buys pay Jupiter's "high" priority fee (capped at 0.0005 SOL), every sell
+  "veryHigh" (capped at 0.001 SOL); urgent exits
   (stop, rug, pool gone, tripwire, Close button) accept 10% slippage.
 - **Re-send until it lands:** a busy pool drops low-fee transactions without an error. Re-send the same signed
   transaction every 2 s until it confirms or its blockhash expires (same signature, so it can only land once),

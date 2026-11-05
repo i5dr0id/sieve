@@ -83,17 +83,25 @@ def window(c, t0):
 
 
 def simulate(entry, path, stop=EXIT["stop_pct"], ladder=tuple(EXIT["ladder"]), trail=EXIT["trail_pct"],
-             tstop_h=EXIT["time_stop_hours"], tstop_min=EXIT["time_stop_min_pct"]):
-    """Our exit rules on candles. Pessimistic: inside a candle the low is checked before the high."""
+             tstop_h=EXIT["time_stop_hours"], tstop_min=EXIT["time_stop_min_pct"], lock_arm=None, lock_floor=0):
+    """Our exit rules on candles. Pessimistic: inside a candle the low is checked before the high,
+    and a stop the price gapped through fills at the candle's open.
+    lock_arm: once the high reaches +lock_arm%, the stop moves up to +lock_floor%. it fills at the floor, or at the
+    candle's open when the price gapped below it, and only from the candle after the one that armed it."""
     left, pnl, steps, peak, t_open = 1.0, 0.0, 0, entry, path[0][0] - 300
+    armed = False
     for ts, o, h, l, cl, v in path:
+        if armed and steps == 0 and (l / entry - 1) * 100 <= lock_floor:   # profit lock (before first take)
+            px = min(entry * (1 + lock_floor / 100), o)
+            return pnl + left * (px / entry - 1), "profit_lock"
         if (l / entry - 1) * 100 <= stop and steps == 0:            # hard stop (before first take)
-            px = entry * (1 + stop / 100)
+            px = min(entry * (1 + stop / 100), o)                    # a gap down fills at the open, not the stop
             return pnl + left * (px / entry - 1), "stop"
         if steps > 0 and l <= peak * (1 - trail / 100):              # trailing stop (after first take)
-            px = peak * (1 - trail / 100)
+            px = min(peak * (1 - trail / 100), o)
             return pnl + left * (px / entry - 1), "trailing_stop"
         peak = max(peak, h)
+        armed = armed or (lock_arm is not None and (h / entry - 1) * 100 >= lock_arm)
         while steps < len(ladder) and (h / entry - 1) * 100 >= ladder[steps][0]:
             frac = min(left, ladder[steps][1])
             pnl += frac * (ladder[steps][0] / 100)

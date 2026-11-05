@@ -9,7 +9,7 @@ if not PAPER:
 
 # live exits pay the priority fee: an unconfirmed sell is how a stop turns into a big loss (CHUNKEE, MFORGE, CHICO).
 # the urgent ones also accept 10% slippage, because getting out of a rug matters more than the last few % of price.
-URGENT = ("stop", "liquidity_pulled", "pool_gone", "manual_close", "dev_sold", "holders_exit")
+URGENT = ("stop", "profit_lock", "liquidity_pulled", "pool_gone", "manual_close", "dev_sold", "holders_exit")
 TRIPWIRES = f"logs/{MODE}/tripwires.csv"    # every first wallet hit per position, shadow or not: the evidence for "on"
 
 
@@ -101,7 +101,8 @@ def watch() -> list[str]:
             except Exception as e:                       # position stays in the book, next run retries
                 events.append(f"ERROR {s['symbol']}: live sell {size} ({why}) failed: {e}")
                 return False
-            events.append(f"{s['symbol']}: {'sold' if PAPER else 'LIVE sold'} {size} at {pct:+.0f}% ({why}), pnl ${pnl:+.2f}")
+            peak = (s["peak"] / s["entry"] - 1) * 100       # the best price seen at a check: how much the exits gave back
+            events.append(f"{s['symbol']}: {'sold' if PAPER else 'LIVE sold'} {size} at {pct:+.0f}% ({why}), pnl ${pnl:+.2f}, peak {peak:+.0f}%")
             return True
 
         if mint in manual:                               # the dashboard's Close button. a failed sell stays requested and retries
@@ -114,6 +115,9 @@ def watch() -> list[str]:
             out(1.0, "liquidity_drop"); continue
         if pct <= EXIT["stop_pct"]:
             out(1.0, "stop"); continue
+        # once up lock_arm_pct, the stop moves up to lock_floor_pct: a green start never turns into the full stop
+        if s["steps"] == 0 and (s["peak"] / s["entry"] - 1) * 100 >= EXIT["lock_arm_pct"] and pct <= EXIT["lock_floor_pct"]:
+            out(1.0, "profit_lock"); continue
         ladder = EXIT["ladder"]
         if s["steps"] < len(ladder) and pct >= ladder[s["steps"]][0]:
             # each step sells its share of what is held NOW, so a manual sale (Sell half) keeps the ladder's shape

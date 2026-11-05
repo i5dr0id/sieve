@@ -21,24 +21,26 @@ Done 2026-10-28 to 11-01:
 
 ---
 
-## Review on 2026-11-05
+## Review on 2026-11-05 (done)
+
+Also changed with it: the ticket went from $5 to $10, the daily loss halt from $7 to $12, and the sweep keeps $25 (two $10 tickets plus the fee reserve). A $10 replay of the new rules on 10-24 to 11-04 gave +$51 to +$62 with one trade open at a time, but it uses the same data the rules were picked from, and live has made far less than paper (+2.3% vs +15.9% of money in since 10-24).
 
 Copy the phone's logs to `logs/phone_snapshot` first. Each item ends in "keep", "change" or "not enough data yet".
-- [ ] **Stops with real slippage.** Re-run the stop sweep with the real fills (stops filled at −27% to −39% on a −20% stop before the 15 s checks).
-- [ ] **Minimum liquidity ~$50k** instead of $30k. MOTH ($30.7k pool) rugged within the hour.
-- [ ] **Break-even stop** after the first take-profit.
-- [ ] **Absolute 1h volume floor** (~$40k), next to the 0.1×-pool ratio.
-- [ ] **Fees paid in SOL** as a quality filter (from the GMGN clip; a "min 0.25 SOL total fees" rule came up again 11-01).
-- [ ] **Dev launch count** and "dev wallet moving" (from the "follow the money" article).
-- [ ] **Website domain age** from `tokenfacts.csv` (history filled in for every judged token). Did young domains rug more than old ones? Free hosts?
-- [ ] **Holder funding clusters** from `tokenfacts.csv` (only from 11-01 on). Check whether a shared funder is a wallet factory or just an exchange hot wallet before reading anything into it.
-- [ ] **GeckoTerminal vs DexScreener** from `sources.csv`: which source's tokens did better, and is GeckoTerminal worth its rate-limit errors?
-- [ ] **The 10% entry cap:** what did the skipped buys do?
-- [ ] **Wallet tripwires** (after ~10 trades): did each hit come before a drop or during a pump? If mostly before, switch `WALLET_WATCH` to `"on"`, paper first.
-- [ ] **"Sellers in control" judge rule** (more sells than buys in 1h). 5 of its 6 skips with follow-ups went +76% to +666% at 24h; only MERGE rugged. Loosen to sells > 1.5× buys, or drop it?
-- [ ] **Rugcheck outages:** count them (10-31 02:27–16:30 errors, 11-02 13:14–14:21 unreachable). Worth a backup checker (mint/freeze authority, Token-2022, top 10, dev share from our own RPC), logged next to Rugcheck first?
-- [ ] **The new buy slippage:** did live buys land, and how far above the screen price did they fill?
-- [ ] **Buy priority fee:** if buys still get dropped with the re-send in place, try Jupiter's "high" level (capped ~0.0005 SOL) on buys.
+- [x] **Stops with real slippage.** Re-run the stop sweep with the real fills (stops filled at −27% to −39% on a −20% stop before the 15 s checks). → **change (indirectly)**: live stops filled −18% to −57% (−35% average). `backtest.simulate` now fills a gapped stop at the candle's open; the profit lock keeps more trades away from the stop.
+- [x] **Minimum liquidity ~$50k** instead of $30k. MOTH ($30.7k pool) rugged within the hour. → **change to $40k**: under $40k 81% of judged tokens died and 12% ran +50%; $40–50k was the best band (34% ran), so $50k would cut winners.
+- [x] **Profit lock: move the stop up once a trade is green.** GIMODELO (11-04) hit +24.5% four minutes in, gave it all back in a minute and stopped out at −22%; GHOST ran past +20% and only a manual close saved +$0.19 (the paper copy stopped at −22%). Add `lock_arm_pct` / `lock_floor_pct` to `backtest.simulate` and run the grid: arm at +10/+15/+20/+25, floor at 0/+3/+5 (fills land below the trigger on a falling coin: GHOST triggered +9%, filled +3.7%). Check how many past winners (███WIF, Leverhedge, VI, USDC) dipped to the floor before running. Wanted: arm at +15%, floor at +5%. Sale lines now log each trade's peak (`peak +24%`) to check it against. → **change**: replay of 96 tokens on 1-minute candles. Arm +25 / floor 0 won (+$20.86 on the 28 judge buys vs +$16.92 today); +15/+5 lost (+$13.39) by selling REACHY, Fartcoin, VI and BLOB on their first dip. Live since 11-05.
+- [ ] **Absolute 1h volume floor** (~$40k), next to the 0.1×-pool ratio. → **not enough data yet** (follow-ups don't record volume).
+- [ ] **Fees paid in SOL** as a quality filter (from the GMGN clip; a "min 0.25 SOL total fees" rule came up again 11-01). → **not enough data yet** (not collected).
+- [ ] **Dev launch count** and "dev wallet moving" (from the "follow the money" article). → **not enough data yet** (not collected).
+- [ ] **Website domain age** from `tokenfacts.csv` (history filled in for every judged token). Did young domains rug more than old ones? Free hosts? → **not enough data yet**: 47 of 54 sites were under 7 days old. No website: 11% ran +50%, a young domain: 32%, so the no-website rule stays.
+- [ ] **Holder funding clusters** from `tokenfacts.csv` (only from 11-01 on). Check whether a shared funder is a wallet factory or just an exchange hot wallet before reading anything into it. → **not enough data yet, but watch it**: a cluster of 3+ died 82% of the time (9 of 11) vs 27% for 0–1. Next candidate rule.
+- [ ] **GeckoTerminal vs DexScreener** from `sources.csv`: which source's tokens did better, and is GeckoTerminal worth its rate-limit errors? → **not enough data yet**: GeckoTerminal's tokens ran +50% 12% of the time (n=17), DexScreener's 30% (n=33).
+- [x] **The 10% entry cap:** what did the skipped buys do? → **keep**: one skip ever (DUBBLE, under the old 5% cap).
+- [x] **Wallet tripwires** (after ~10 trades): did each hit come before a drop or during a pump? If mostly before, switch `WALLET_WATCH` to `"on"`, paper first. → **change to "on"**: selling at the hit would have helped 6 of 7 (ZERO +$4.97, Wanted +$5.12, CASSO +$1.85, AAPL +$1.20, GHOST +$1.06, Ahsoka +$0.43), hurt USDC −$0.51. Live since 11-05.
+- [x] **"Sellers in control" judge rule** (more sells than buys in 1h). 5 of its 6 skips with follow-ups went +76% to +666% at 24h; only MERGE rugged. Loosen to sells > 1.5× buys, or drop it? → **dropped**: 7 of 8 skips ran +50% or more (RAMBO +570% at 6h), median +175% at 24h.
+- [ ] **Rugcheck outages:** count them (10-31 02:27–16:30 errors, 11-02 13:14–14:21 unreachable). Worth a backup checker (mint/freeze authority, Token-2022, top 10, dev share from our own RPC), logged next to Rugcheck first? → **not enough data yet**: 113 scan runs skipped with Rugcheck down. Also seen: a few mints get a 400 from Rugcheck and are retried every run (up to 63 times); mark them seen.
+- [x] **The new buy slippage:** did live buys land, and how far above the screen price did they fill? → **keep**: 5 live buys since 11-02 filled −8% to +1.2% vs the screen (SA the worst).
+- [x] **Buy priority fee:** if buys still get dropped with the re-send in place, try Jupiter's "high" level (capped ~0.0005 SOL) on buys. → **change**: CASSO, BLOB and SHAVCOIN went unconfirmed (BLOB then ran +178%). Buys pay "high", capped at 0.0005 SOL, since 11-05.
 
 ---
 

@@ -107,12 +107,15 @@ def close_empty(send: bool = True) -> dict:
 
 # the Close button pays to land first: Jupiter's "veryHigh" priority fee, never more than 0.001 SOL
 PRIORITY_FEE = {"priorityLevelWithMaxLamports": {"priorityLevel": "veryHigh", "maxLamports": 1_000_000}}
+# buys pay "high", never more than 0.0005 SOL: on "auto" busy pools left them unconfirmed (BLOB, SHAVCOIN, CASSO)
+BUY_PRIORITY_FEE = {"priorityLevelWithMaxLamports": {"priorityLevel": "high", "maxLamports": 500_000}}
 
 
-def _swap(q: dict, kp: Keypair, send: bool, priority: bool = False) -> dict:
+def _swap(q: dict, kp: Keypair, send: bool, priority: bool | dict = False) -> dict:
+    fee = priority if isinstance(priority, dict) else PRIORITY_FEE if priority else "auto"
     r = requests.post(f"{JUP}/swap", timeout=30, json={
         "quoteResponse": q, "userPublicKey": str(kp.pubkey()),
-        "dynamicComputeUnitLimit": True, "prioritizationFeeLamports": PRIORITY_FEE if priority else "auto"})
+        "dynamicComputeUnitLimit": True, "prioritizationFeeLamports": fee})
     r.raise_for_status()
     swap = r.json()
     unsigned = VersionedTransaction.from_bytes(base64.b64decode(swap["swapTransaction"]))
@@ -223,7 +226,7 @@ def buy(mint: str, usd: float = TICKET_USD, dry: bool = False, screen_price: flo
     for attempt in (1, 2):
         q = _buy_quote(mint, lamports, usd, dec, screen_price)
         try:
-            res = _swap(q, kp, send)
+            res = _swap(q, kp, send, BUY_PRIORITY_FEE)
             break
         except RuntimeError as e:                    # 6001: the price moved past the slippage before it filled.
             if "'Custom': 6001" not in str(e):       # nothing was bought, so quote again once, under the same cap

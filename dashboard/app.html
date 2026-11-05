@@ -526,7 +526,7 @@ function renderMore() {
   return hdr("Settings") + offline() +
     `<div class="sec"><span>Trading</span></div>
     <div class="list">
-      <button class="row" data-act="pause" data-mode="live"><div class="main"><div class="title">Live buys</div><div class="meta">Real money · max 2 open, $7 daily loss halt</div></div><span class="sw ${pm.live ? "" : "on"}"></span></button>
+      <button class="row" data-act="pause" data-mode="live"><div class="main"><div class="title">Live buys</div><div class="meta">Real money · max 2 open, $12 daily loss halt</div></div><span class="sw ${pm.live ? "" : "on"}"></span></button>
       <button class="row" data-act="pause" data-mode="paper"><div class="main"><div class="title">Paper buys</div><div class="meta">Pretend fills for backtesting</div></div><span class="sw ${pm.paper ? "" : "on"}"></span></button>
     </div>
     <div class="sec"><span>Profit sweep</span></div>
@@ -608,7 +608,7 @@ const ACT = {
         <p class="lead">${mode === "live" ? "Real money" : "Paper"} · held ${held(q.hours)}${q.closing ? ' · <span class="closing">closing…</span>' : ""}</p>
         <div class="list">${row("Unrealized", usd(q.upnl, true), cls(q.upnl))}${row("Entry", px(q.entry))}${row("Now", px(q.now))}
           ${row("Peak", pct(peak), cls(peak))}${row("Pool vs entry", pct(liq), cls(liq))}${row("Ladder sales", q.steps + " of 2")}</div>
-        <div class="list">${row("Stop", "−20%")}${row("Take profit", "+100% (½), +200% (¼)")}${row("Trailing stop", "30% from peak")}</div>
+        <div class="list">${row("Stop", "−20%")}${row("Profit lock", "stop to entry after +25%")}${row("Take profit", "+100% (½), +200% (¼)")}${row("Trailing stop", "30% from peak")}</div>
         ${q.url ? `<a class="btn ghost" href="${esc(q.url)}" target="_blank" rel="noopener">View chart</a>` : ""}
         <button class="btn ghost" data-act="close" data-part="0.5" data-mode="${mode}" data-mint="${esc(q.mint)}" ${q.closing ? "disabled" : ""}>Sell half</button>
         <button class="btn red" data-act="close" data-mode="${mode}" data-mint="${esc(q.mint)}" ${q.closing ? "disabled" : ""}>${q.closing ? "Closing…" : mode === "live" ? "Sell all now" : "Close position"}</button>
@@ -631,7 +631,7 @@ const ACT = {
     const mode = btn.dataset.mode, paused = S.live.paused_modes[mode];
     if (!paused) return doPause(mode, true);         // pausing is always safe: no question asked
     sheet(`<h2>Resume ${mode} buys?</h2>
-      <p class="lead">${mode === "live" ? "The desk will spend real money again: $5 a trade, at most 2 open, stops for the day after a $7 loss." : "Paper will fill every BUY verdict again."}</p>
+      <p class="lead">${mode === "live" ? "The desk will spend real money again: $10 a trade, at most 2 open, stops for the day after a $12 loss." : "Paper will fill every BUY verdict again."}</p>
       <button class="btn" data-act="resume" data-mode="${mode}">Resume ${mode}</button><button class="btn ghost" data-act="dismiss">Cancel</button>`);
   },
   resume(btn) { closeSheet(); doPause(btn.dataset.mode, false); },

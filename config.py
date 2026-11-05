@@ -33,10 +33,10 @@ if os.environ.get("SIEVE_MODE") in ("paper", "live"):
 PAPER_LIMITS = False        # False: paper fills every BUY verdict (the most data). MAX_OPEN, entries/day and the
                             # loss halt are live-money rules. True: paper obeys them too, to copy live exactly.
 
-TICKET_USD = 5              # flat. never sized off the last win
-MAX_OPEN = 2                # 2 x $5 = $10 in the market, max (was 3 until 2026-10-27)
+TICKET_USD = 10             # flat. never sized off the last win (was $5 until 2026-11-05)
+MAX_OPEN = 2                # 2 x $10 = $20 in the market, max (was 3 until 2026-10-27)
 MAX_ENTRIES_PER_DAY = 4
-DAILY_LOSS_HALT_USD = 7     # live realized loss today hits this -> no new live entries until tomorrow. paper keeps going
+DAILY_LOSS_HALT_USD = 12    # live realized loss today hits this -> no new live entries until tomorrow. paper keeps going
 COOLDOWN_HOURS = 24         # no re-entry into a token you just left
 
 FACTS = {                   # the rug filter. code only, no model
@@ -47,7 +47,7 @@ FACTS = {                   # the rug filter. code only, no model
     "kill_warns": ["High holder correlation"],   # rugcheck warnings treated as kills: many holder wallets are one owner
     "max_dev_pct": 5,           # supply still sitting in the creator wallet
     "max_insiders": 0,          # insider-flagged holders + insider graph hits
-    "min_liquidity_usd": 30000,
+    "min_liquidity_usd": 40000,  # was 30k. review 2026-11-05: under $40k 81% died and 12% ran +50%; $40-50k: 66% and 34%
     "max_ticket_share": 0.01,   # your ticket is never more than 1% of the pool
     "min_age_min": 30,          # younger than this, every report is still guessing
     "max_age_hours": 72,
@@ -62,7 +62,7 @@ CODE_JUDGE = {                  # each rule is a SKIP. a token that breaks none 
     "max_chg_1h_pct": None,         # off: the backtest showed this rule skipping winners. a number turns it back on
     "max_vol_to_liq_1h": 10,        # 1h volume over 10x the pool = bot churn. was 5: backtest 2026-10-24 showed 5 skipping the winners
     "min_vol_to_liq_1h": 0.1,       # 1h volume under 0.1x the pool = a climb nobody is trading (fake climb)
-    "sells_over_buys_1h": True,     # more sells than buys in the last hour = holders dumping
+    "sells_over_buys_1h": False,    # off since 2026-11-05: 7 of its 8 skips ran +50% or more (median +175% at 24h)
     "copycat_hours": 24,            # same symbol seen under another contract within this window
     "require_website": True,
     "confidence": 0.7,
@@ -81,12 +81,14 @@ EXIT = {
     "time_stop_min_pct": 20,
     "late_trail_pct": 20,                   # past the time stop, no ladder sale yet: out when price falls 20% from its peak
     "liq_drop_pct": 40,                     # pool liquidity down 40% from entry -> out now
+    "lock_arm_pct": 25,                     # profit lock: once up 25%, the stop moves up to lock_floor_pct (before any
+    "lock_floor_pct": 0,                    # ladder sale). replay 2026-11-05: +25/0 beat no lock; +15/+5 sold the runners
 }
 
 # wallet tripwires (wallets.py): a rug shows in the wallets before the chart. at the first exit check after a buy
 # the desk records the creator wallet and the top 10 holders; every check after that compares against it.
 WALLET_WATCH = {
-    "mode": "shadow",            # "shadow": log the first hit per position and keep holding (logs/<mode>/tripwires.csv).
+    "mode": "on",                # "shadow": log the first hit per position and keep holding (logs/<mode>/tripwires.csv).
                                  # "on": sell everything on a hit. "off": don't read wallets at all
     "dev_sell_pct": 20,          # creator wallet down 20% from the snapshot -> out
     "dev_arm_pct": 0.5,          # the dev rule only counts if the creator held 0.5%+ of supply at the snapshot
@@ -114,7 +116,7 @@ MIN_SOL_RESERVE = 0.02      # always leave this much SOL for fees, never spend i
 
 # profit sweeps (sweep.py): only ever to YOUR wallet, set as SWEEP_TO_ADDRESS in .env. the dashboard can't change it.
 SWEEP_TO = ENV.get("SWEEP_TO_ADDRESS")
-SWEEP = {"keep_usd": 18,    # leave this much in the bot: 2 tickets, the fee reserve and a couple of losses
+SWEEP = {"keep_usd": 25,    # leave this much in the bot: 2 tickets, the fee reserve and a couple of losses
          "min_usd": 3,      # don't bother sending less than this
          "max_sol": 0.5,    # hard cap per sweep
          "test_sol": 0.005} # sweep.py --test

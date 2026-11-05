@@ -42,7 +42,8 @@ def price_now() -> float:
 
 def done(pnl: float, p: float, extra: str = ""):
     pct = (p / pos["entry"] - 1) * 100 if p else 0
-    log(f"{sym}: {'sold' if config.PAPER else 'LIVE sold'} {what} at {pct:+.0f}% ({why}, priority{extra}), pnl ${pnl:+.2f}")
+    peak = (max(pos["peak"], p) / pos["entry"] - 1) * 100
+    log(f"{sym}: {'sold' if config.PAPER else 'LIVE sold'} {what} at {pct:+.0f}% ({why}, priority{extra}), pnl ${pnl:+.2f}, peak {peak:+.0f}%")
     if full:
         book.clear_close_request(mint)
 
